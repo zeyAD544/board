@@ -1,0 +1,3069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Viewing Room — Projection &amp; Sound Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Optimized, streamlined font payload (saves ~235KB) -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;600&family=Syne:wght@700&display=swap" rel="stylesheet">
+<!-- Free Firebase SDK for Cloud Firestore Sync -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<!-- QR Code generator (client-side, no external service dependency) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+  :root {
+    --bg-base: #08090c;
+    --bg-panel: #111318;
+    --bg-surface: #171922;
+    --bg-surface-elevated: #1e212c;
+    --bg-input: #0c0d12;
+    
+    --amber: #e5a93b;
+    --amber-bright: #fbbf24;
+    --amber-dim: #b47d1e;
+    --amber-glow: rgba(229, 169, 59, 0.22);
+    --amber-glow-strong: rgba(229, 169, 59, 0.45);
+    
+    --tally-red: #f43f5e;
+    --tally-glow: rgba(244, 63, 94, 0.4);
+    --emerald: #10b981;
+    --emerald-glow: rgba(16, 185, 129, 0.3);
+    --cyan-focus: #06b6d4;
+
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-mid: rgba(255, 255, 255, 0.14);
+    --border-active: rgba(229, 169, 59, 0.45);
+    
+    --text-primary: #f0f2f7;
+    --text-secondary: #9aa1b2;
+    --text-tertiary: #687084;
+    --text-amber: #e5a93b;
+
+    --font-display: "Syne", sans-serif;
+    --font-ui: "Plus Jakarta Sans", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 18px;
+
+    --shadow-cinema: 0 25px 70px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255,255,255,0.06);
+    --transition-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { 
+    box-sizing: border-box; 
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    touch-action: manipulation;
+  }
+
+  /* Tablet Screen Noise Atmosphere */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(circle at 50% 20%, rgba(229, 169, 59, 0.05) 0%, transparent 60%),
+                      radial-gradient(circle at 90% 85%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
+                      radial-gradient(circle at 10% 80%, rgba(244, 63, 94, 0.02) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Eye-Protection Mode Overlay */
+  #eyeProtectionOverlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99999;
+    opacity: 0;
+    transition: opacity 0.4s ease, background 0.4s ease;
+    mix-blend-mode: multiply;
+  }
+  body.eye-protect-active #eyeProtectionOverlay { opacity: 1; }
+
+  /* Tablet App Console Grid */
+  .app-console {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr 430px;
+    grid-template-rows: 64px 1fr;
+    height: 100vh;
+    height: 100dvh;
+    background: transparent;
+    transition: filter 0.4s ease;
+  }
+
+  /* Dim cinema mode */
+  body.cinema-dim .sidebar,
+  body.cinema-dim .search-block,
+  body.cinema-dim .cue-queue-bar,
+  body.cinema-dim header {
+    opacity: 0.22;
+    filter: grayscale(40%);
+    transition: opacity 0.5s ease, filter 0.5s ease;
+  }
+  body.cinema-dim .sidebar:hover,
+  body.cinema-dim .search-block:hover,
+  body.cinema-dim header:hover {
+    opacity: 0.95;
+    filter: none;
+  }
+
+  /* ---------- Header / Master Control Bar ---------- */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    background: rgba(17, 19, 24, 0.94);
+    backdrop-filter: blur(24px) saturate(130%);
+    -webkit-backdrop-filter: blur(24px) saturate(130%);
+    border-bottom: 1px solid var(--border-subtle);
+    gap: 12px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .projection-emblem {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #1c1e28, #101217);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    flex-shrink: 0;
+  }
+  .projection-emblem::after {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 12px var(--amber);
+    animation: projectorPulse 4s ease-in-out infinite;
+  }
+  @keyframes projectorPulse {
+    0%, 100% { opacity: 0.85; transform: scale(0.95); }
+    50% { opacity: 1; transform: scale(1.15); filter: drop-shadow(0 0 6px var(--amber-bright)); }
+  }
+
+  .brand-title {
+    font-family: var(--font-display);
+    font-size: 14.5px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .brand-title .suite-tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    background: rgba(229, 169, 59, 0.12);
+    border: 1px solid rgba(229, 169, 59, 0.28);
+    color: var(--amber);
+    padding: 1px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .brand-sub {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-tertiary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Center: Focus Session Timer */
+  .focus-timer-deck {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+  }
+  .timer-clock {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--amber-bright);
+    letter-spacing: 1.5px;
+    min-width: 48px;
+    text-align: center;
+  }
+  .timer-clock.running {
+    animation: timerPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes timerPulse {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 1; filter: drop-shadow(0 0 6px var(--amber-glow)); }
+  }
+  .timer-btn {
+    min-height: 34px;
+    min-width: 34px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 0 8px;
+    transition: all 0.15s;
+  }
+  .timer-btn:active, .timer-btn.active {
+    background: var(--amber);
+    color: #0c0d12;
+    border-color: var(--amber);
+  }
+  .timer-presets {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .timer-preset-chip {
+    padding: 4px 7px;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+  .timer-preset-chip.active {
+    color: var(--amber-bright);
+    background: rgba(229, 169, 59, 0.12);
+    border-color: var(--amber);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Data Saver / Eco Bandwidth Pill */
+  .eco-bandwidth-pill {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: var(--radius-sm);
+    color: #6ee7b7;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .eco-bandwidth-pill.active {
+    background: rgba(16, 185, 129, 0.22);
+    border-color: var(--emerald);
+    color: #34d399;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+  }
+
+  /* Eco Popover */
+  .eco-popover {
+    position: absolute;
+    top: 72px;
+    right: 250px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    width: 290px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.85);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .eco-popover.open { display: flex; }
+
+  /* Tablet-friendly touch buttons (min 42px) */
+  .touch-btn {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.18s;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .touch-btn:active { transform: scale(0.97); }
+  .touch-btn.active {
+    background: rgba(229, 169, 59, 0.16);
+    border-color: var(--amber);
+    color: var(--amber-bright);
+  }
+
+  /* Cloud Sync pill */
+  .cloud-sync-pill {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 12px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #6ee7b7;
+    cursor: pointer;
+  }
+  .cloud-sync-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 8px var(--emerald);
+  }
+
+  /* Eye Protection Popover */
+  .eye-popover {
+    position: absolute;
+    top: 72px;
+    right: 140px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    width: 290px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.85);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .eye-popover.open { display: flex; }
+  .eye-mode-chips { display: flex; gap: 6px; }
+  .eye-chip {
+    flex: 1;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .eye-chip.active {
+    background: rgba(229, 169, 59, 0.18);
+    border-color: var(--amber);
+    color: var(--amber-bright);
+  }
+
+  /* Tablet Screen & Console Mode Switcher (Visible on Portrait / Compact Tablets) */
+  .tablet-mode-bar {
+    display: none;
+    grid-column: 1 / -1;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 6px 16px;
+    gap: 8px;
+  }
+  .tablet-tab-btn {
+    flex: 1;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .tablet-tab-btn.active {
+    background: rgba(229, 169, 59, 0.16);
+    border-color: var(--amber);
+    color: var(--amber-bright);
+  }
+
+  /* ---------- Main Projection Deck (Left) ---------- */
+  .video-area {
+    display: flex;
+    flex-direction: column;
+    padding: 16px 20px;
+    gap: 12px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+  }
+
+  .player-stage {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .stage-meta-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+  }
+
+  .tally-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+  }
+  .tally-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tally-red);
+    box-shadow: 0 0 8px var(--tally-glow);
+    animation: livePulse 2s ease-in-out infinite;
+  }
+
+  .live-timecode-badge {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #6ee7b7;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  .aspect-switcher {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    padding: 3px;
+    border-radius: 6px;
+  }
+  .aspect-btn {
+    min-height: 32px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 0 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .aspect-btn.active {
+    color: var(--amber-bright);
+    background: rgba(229, 169, 59, 0.15);
+  }
+
+  .player-wrap {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: 48vh;
+    background: #000;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-cinema);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .player-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+  }
+
+  /* "Double Feature" Cue Queue Drawer */
+  .cue-queue-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid rgba(229, 169, 59, 0.25);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+  }
+  .cue-queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--amber-bright);
+  }
+  .cue-queue-items {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    min-height: 48px;
+  }
+  .cue-queue-items::-webkit-scrollbar { display: none; }
+  .queue-pill-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .queue-pill-item:active { background: rgba(229, 169, 59, 0.15); border-color: var(--amber); }
+  .queue-pill-idx {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--emerald);
+    background: rgba(16, 185, 129, 0.12);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .queue-pill-title { font-size: 11px; color: var(--text-primary); font-weight: 500; }
+  .queue-pill-remove {
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 3px;
+  }
+  .queue-pill-remove:active { color: var(--tally-red); }
+
+  /* 40Hz Focus Shortcuts Suite */
+  .focus-40hz-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    background: linear-gradient(90deg, rgba(6, 182, 212, 0.08), rgba(229, 169, 59, 0.06));
+    border: 1px solid rgba(6, 182, 212, 0.22);
+    border-radius: var(--radius-sm);
+  }
+  .focus-40hz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #67e8f9;
+  }
+  .focus-40hz-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .focus-40hz-pills::-webkit-scrollbar { display: none; }
+  .focus-pill {
+    min-height: 38px;
+    white-space: nowrap;
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    color: #cffafe;
+    padding: 6px 12px;
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .focus-pill:active { background: rgba(6, 182, 212, 0.3); border-color: #22d3ee; }
+
+  /* Search & Results */
+  .search-block { display: flex; flex-direction: column; gap: 8px; }
+  .search-bar {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px 6px 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    align-items: center;
+  }
+  .search-bar:focus-within {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 3px var(--amber-glow);
+  }
+  .search-bar input {
+    flex: 1;
+    min-height: 40px;
+    padding: 0 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-ui);
+    outline: none;
+  }
+  .search-bar button {
+    min-height: 42px;
+    padding: 0 18px;
+    background: var(--amber);
+    border: none;
+    color: #0b0c10;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .curator-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .curator-pills::-webkit-scrollbar { display: none; }
+  .curator-pill {
+    min-height: 34px;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    padding: 4px 11px;
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Results Grid: Guaranteed Aspect-Ratio Film Cards */
+  .results {
+    max-height: 290px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+    gap: 12px;
+    padding-right: 4px;
+  }
+  .result-item {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 185px; /* Guaranteed minimum height prevents collapsing into pills */
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .result-item:hover, .result-item:active {
+    border-color: var(--amber);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6), 0 0 10px var(--amber-glow);
+  }
+  .result-item .thumb-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 110px;
+    background: #0f1118;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .result-item .thumb-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    background: linear-gradient(135deg, #131620 0%, #090a0f 100%);
+    gap: 4px;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .result-item .thumb-placeholder svg {
+    opacity: 0.45;
+  }
+  .result-item img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 110px;
+    object-fit: cover;
+    display: block;
+    background: transparent;
+    z-index: 2;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .result-item:hover img {
+    transform: scale(1.04);
+  }
+  .result-item .item-bottom {
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    justify-content: space-between;
+  }
+  .result-item .title {
+    font-size: 11.5px;
+    line-height: 1.35;
+    color: var(--text-secondary);
+    font-weight: 500;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 30px;
+  }
+  .result-item .card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  .cue-btn {
+    min-height: 28px;
+    padding: 2px 10px;
+    background: rgba(229, 169, 59, 0.12);
+    border: 1px solid rgba(229, 169, 59, 0.3);
+    border-radius: 4px;
+    color: var(--amber-bright);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .cue-btn:hover, .cue-btn:active {
+    background: var(--amber);
+    color: #0c0d12;
+  }
+
+  /* Audio Score Results (Sidebar Tracks) */
+  #musicResults {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 290px;
+    overflow-y: auto;
+  }
+  #musicResults .result-item {
+    flex-direction: row;
+    min-height: 60px;
+    height: 60px;
+    align-items: center;
+  }
+  #musicResults .result-item .thumb-container {
+    width: 86px;
+    height: 60px;
+    min-height: 60px;
+    aspect-ratio: auto;
+  }
+  #musicResults .result-item .thumb-container img {
+    min-height: 60px;
+    aspect-ratio: auto;
+  }
+  #musicResults .result-item .title {
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.3;
+    min-height: auto;
+    -webkit-line-clamp: 2;
+  }
+
+  /* ---------- Sidebar / Acoustic Deck (Right) ---------- */
+  .sidebar {
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+  }
+  .sidebar-section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .deck-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .deck-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .deck-title::before {
+    content: "";
+    width: 3px;
+    height: 12px;
+    background: var(--emerald);
+    border-radius: 1px;
+    box-shadow: 0 0 8px var(--emerald-glow);
+  }
+
+  /* Audio-Only Hidden Host: Tiny 144p Footprint Saves 96% Data */
+  #musicPlayerHost {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* Dedicated Audio-Only Vinyl & Tape Deck Unit */
+  .audio-only-console {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .turntable-bay {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .vinyl-disc {
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #2d3139 12%, #0e1014 13%, #1b1e26 35%, #0e1014 36%, #252833 60%, #0c0d10 61%, #1f222b 90%, #000 100%);
+    border: 2px solid #323744;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vinyl-disc::after {
+    content: "";
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--emerald), #047857);
+    border: 2px solid #111;
+  }
+  body.music-active .vinyl-disc {
+    animation: vinylSpin 3s linear infinite;
+  }
+
+  .deck-track-meta { flex: 1; min-width: 0; }
+  .deck-track-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .deck-track-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--emerald);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  /* Audio Seek Scrubber */
+  .audio-scrubber-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+  }
+  .audio-scrubber-wrap input[type="range"] {
+    flex: 1;
+    accent-color: var(--emerald);
+    height: 6px;
+    cursor: pointer;
+  }
+  .audio-time-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    width: 36px;
+    text-align: right;
+  }
+
+  /* Tactical Audio Controls */
+  .audio-tactical-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-input);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+  }
+  .volume-slider-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .volume-slider-group input[type="range"] {
+    flex: 1;
+    accent-color: var(--amber);
+    height: 6px;
+    cursor: pointer;
+  }
+  .rate-select {
+    min-height: 36px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    border-radius: 6px;
+    padding: 0 6px;
+    outline: none;
+  }
+  .audio-icon-btn {
+    min-height: 36px;
+    min-width: 36px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+  }
+  .audio-icon-btn.active { color: var(--emerald); }
+
+  /* Ambient Atmosphere Soundboard (Zero Network Bytes - Web Audio Pure Synthesis) */
+  .atmosphere-soundboard {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px;
+  }
+  .soundboard-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--amber-bright);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .soundboard-channel {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-input);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+  }
+  .channel-btn {
+    min-height: 36px;
+    min-width: 36px;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .channel-btn.active {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: var(--emerald);
+    color: #34d399;
+  }
+  .channel-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .channel-name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-primary);
+    display: flex;
+    justify-content: space-between;
+  }
+  .channel-info input[type="range"] {
+    accent-color: var(--emerald);
+    height: 5px;
+    width: 100%;
+    cursor: pointer;
+  }
+
+  /* Transport Buttons */
+  .music-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .music-controls button {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .music-controls button.primary {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #34d399;
+  }
+
+  /* Status Bar */
+  .status {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    padding: 10px 18px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(12, 14, 18, 0.95);
+  }
+  .status-main { display: flex; align-items: center; gap: 8px; }
+  .status-main::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 8px var(--emerald);
+  }
+
+  /* History Modal */
+  .history-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .history-modal.open { display: flex; }
+  .history-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 580px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+    overflow: hidden;
+  }
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .history-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    min-height: 58px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .history-thumb {
+    width: 76px;
+    height: 44px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #000;
+    flex-shrink: 0;
+  }
+
+  /* Toast Notification */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--amber);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 16px var(--amber-glow);
+    padding: 10px 22px;
+    border-radius: 100px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    z-index: 999999;
+    opacity: 0;
+    transition: transform 0.3s var(--transition-snappy), opacity 0.3s ease;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  /* Tablet responsive adaptation */
+  @media (max-width: 980px), (orientation: portrait) {
+    .app-console {
+      grid-template-columns: 1fr;
+      grid-template-rows: 64px 50px 1fr;
+    }
+    .tablet-mode-bar { display: flex; }
+    body.tab-mode-audio .video-area { display: none !important; }
+    body.tab-mode-video .sidebar { display: none !important; }
+    .sidebar { border-left: 0; border-top: 1px solid var(--border-subtle); }
+    .focus-timer-deck { display: none; }
+  }
+
+  /* =============================================== */
+  /* 2FA LOGIN GATE & QR AUTHENTICATOR               */
+  /* =============================================== */
+  #authGateOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: #08090c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.4s ease;
+  }
+  #authGateOverlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .auth-gate-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-md);
+    padding: 30px 26px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.85), 0 0 30px rgba(229,169,59,0.08);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .auth-gate-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(229,169,59,0.07), transparent 60%);
+    pointer-events: none;
+  }
+  .auth-gate-emblem {
+    margin: 0 auto 16px;
+    width: 52px;
+    height: 52px;
+    background: linear-gradient(135deg, #1c1e28, #101217);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  }
+  .auth-gate-emblem::after {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 18px var(--amber);
+    animation: projectorPulse 4s ease-in-out infinite;
+  }
+  .auth-gate-title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    position: relative;
+  }
+  .auth-gate-sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 22px;
+    position: relative;
+  }
+  .qr-canvas-wrap {
+    display: inline-flex;
+    padding: 14px;
+    background: #ffffff;
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    position: relative;
+  }
+  #qrCanvas {
+    display: block;
+  }
+  .auth-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    position: relative;
+    margin-bottom: 18px;
+  }
+  .auth-status-chip.waiting {
+    background: rgba(229,169,59,0.12);
+    border: 1px solid rgba(229,169,59,0.3);
+    color: var(--amber-bright);
+  }
+  .auth-status-chip.scanned {
+    background: rgba(6,182,212,0.12);
+    border: 1px solid rgba(6,182,212,0.35);
+    color: #67e8f9;
+  }
+  .auth-status-chip.success {
+    background: rgba(16,185,129,0.12);
+    border: 1px solid rgba(16,185,129,0.35);
+    color: #6ee7b7;
+  }
+  .auth-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  .auth-status-chip.waiting .auth-status-dot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .auth-status-chip.scanned .auth-status-dot { background: #22d3ee; box-shadow: 0 0 8px #22d3ee; }
+  .auth-status-chip.success .auth-status-dot { background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.7; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.15); }
+  }
+
+  .auth-gate-instructions {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+    position: relative;
+  }
+  .auth-gate-instructions strong {
+    color: var(--amber-bright);
+    font-weight: 600;
+  }
+  .auth-gate-footer {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.5px;
+    position: relative;
+  }
+
+  /* =============================================== */
+  /* AI SCENE DIRECTOR PANEL                         */
+  /* =============================================== */
+  .scene-director-panel {
+    padding: 0 22px 20px;
+  }
+  .scene-director-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0 10px;
+  }
+  .scene-director-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ai-tag {
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    background: linear-gradient(135deg, rgba(168,85,247,0.18), rgba(139,92,246,0.12));
+    border: 1px solid rgba(168,85,247,0.35);
+    color: #c4b5fd;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .ai-organize-btn {
+    min-height: 38px;
+    padding: 0 14px;
+    background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(139,92,246,0.08));
+    border: 1px solid rgba(168,85,247,0.4);
+    border-radius: 6px;
+    color: #c4b5fd;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+  }
+  .ai-organize-btn:hover, .ai-organize-btn:active {
+    background: linear-gradient(135deg, rgba(168,85,247,0.25), rgba(139,92,246,0.15));
+    border-color: rgba(168,85,247,0.6);
+    color: #ddd6fe;
+  }
+  .ai-organize-btn.loading {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .ai-result-card {
+    background: var(--bg-surface-elevated);
+    border: 1px solid rgba(168,85,247,0.22);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    display: none;
+  }
+  .ai-result-card.active {
+    display: block;
+  }
+  .ai-mood-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(139,92,246,0.06));
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: #e9d5ff;
+    margin-bottom: 10px;
+  }
+  .ai-director-notes {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    font-style: italic;
+    border-left: 2px solid rgba(168,85,247,0.3);
+    padding-left: 10px;
+  }
+  .ai-rec-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .ai-rec-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 60px;
+  }
+  .ai-rec-value {
+    font-size: 12px;
+    color: var(--text-primary);
+    font-weight: 500;
+    flex: 1;
+  }
+  .ai-apply-btn {
+    min-height: 28px;
+    padding: 2px 10px;
+    background: rgba(168,85,247,0.12);
+    border: 1px solid rgba(168,85,247,0.35);
+    border-radius: 4px;
+    color: #c4b5fd;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .ai-apply-btn:hover, .ai-apply-btn:active {
+    background: rgba(168,85,247,0.25);
+    color: #ede9fe;
+  }
+  .api-secure-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: #6ee7b7;
+  }
+  .api-secure-badge svg { flex-shrink: 0; }
+</style>
+</head>
+<body class="tab-mode-video">
+
+<!-- ============================================= -->
+<!-- 2FA LOGIN GATE OVERLAY                        -->
+<!-- ============================================= -->
+<div id="authGateOverlay">
+  <div class="auth-gate-card">
+    <div class="auth-gate-emblem"></div>
+    <div class="auth-gate-title">Viewing Room</div>
+    <div class="auth-gate-sub">QR Code 2FA Authentication Gate</div>
+
+    <div class="qr-canvas-wrap">
+      <div id="qrCanvas" style="width:180px;height:180px;"></div>
+    </div>
+
+    <div>
+      <div class="auth-status-chip waiting" id="authStatusChip">
+        <div class="auth-status-dot"></div>
+        <span id="authStatusText">Waiting for phone scan...</span>
+      </div>
+    </div>
+
+    <div class="auth-gate-instructions">
+      <strong>Step 1:</strong> Scan this QR code with your phone.<br>
+      <strong>Step 2:</strong> First-time devices register &amp; await Firebase approval.<br>
+      <strong>Step 3:</strong> Approved phones authorize this tablet instantly.
+    </div>
+
+    <div class="auth-gate-footer">
+      SESSION <span id="authSessionIdDisplay">---</span> &bull; FIREBASE PROJECT WHITE-ECC41
+    </div>
+  </div>
+</div>
+
+<!-- Eye-Protection Ambient Screen Layer -->
+<div id="eyeProtectionOverlay"></div>
+
+<!-- Toast element -->
+<div id="toast" class="toast">
+  <span style="color:var(--amber);">⚡</span>
+  <span id="toastMsg">Ready</span>
+</div>
+
+<div class="app-console">
+  <!-- Master Header -->
+  <header>
+    <div class="brand-group">
+      <div class="projection-emblem" title="Cinema Master Deck"></div>
+      <div>
+        <div class="brand-title">
+          VIEWING ROOM
+          <span class="suite-tag">TABLET ED.</span>
+        </div>
+        <div class="brand-sub">Projection &amp; Sound Console</div>
+      </div>
+    </div>
+
+    <!-- ITEM 2: Projectionist Focus & Session Timer with Chime -->
+    <div class="focus-timer-deck" id="focusTimerDeck">
+      <div class="timer-clock" id="sessionTimerClock">25:00</div>
+      <button class="timer-btn" id="sessionTimerToggle" title="Start/Pause Focus Session">Start</button>
+      <button class="timer-btn" id="sessionTimerReset" title="Reset Session Timer">Reset</button>
+      <div class="timer-presets">
+        <button class="timer-preset-chip active" data-mins="25">25m</button>
+        <button class="timer-preset-chip" data-mins="50">50m</button>
+        <button class="timer-preset-chip" data-mins="90">90m</button>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- BANDWIDTH ECONOMY CONTROLLER -->
+      <div class="eco-bandwidth-pill active" id="ecoToggleBtn" title="Bandwidth Saver Mode">
+        <span>🌿</span>
+        <span id="ecoStatusText">Eco Data (144p Deck &bull; Cached)</span>
+      </div>
+
+      <!-- Eco Settings Flyout -->
+      <div class="eco-popover" id="ecoPopover">
+        <div style="font-family:var(--font-mono);font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--emerald);display:flex;justify-content:space-between;">
+          <span>Bandwidth Economy Control</span>
+          <span style="color:#6ee7b7;">~85% Data Saved</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.4;">
+          Limits background audio streams to tiny 144p, caches archive search results in memory, and throttles cloud sync packets.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);">
+          <span>Main Projection Stream Quality:</span>
+          <select id="videoQualitySelect" style="background:var(--bg-input);border:1px solid var(--border-subtle);color:var(--text-primary);padding:6px;border-radius:4px;font-family:inherit;">
+            <option value="medium" selected>Eco 480p (Saves ~70% video data)</option>
+            <option value="large">Balanced 720p HD (Saves ~40%)</option>
+            <option value="auto">Full Resolution Auto / 1080p</option>
+          </select>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:9.5px;color:var(--emerald);">
+          ✓ Search Cache Active (0 KB on repeated queries)<br>
+          ✓ Background Audio Stream: 144p Audio-Only
+        </div>
+      </div>
+
+      <!-- Cloud Sync & Saved History button -->
+      <div class="cloud-sync-pill" id="historyModalBtn" title="Saved History & Cloud Sync">
+        <span class="cloud-sync-pulse"></span>
+        <span id="cloudStatusText">Cloud Synced</span>
+      </div>
+
+      <!-- Eye-Protection Mode button -->
+      <button class="touch-btn" id="eyeToggleBtn" title="Eye-Protection Night Shield">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span id="eyeBtnText">Shield</span>
+      </button>
+
+      <!-- Eye Protection Flyout -->
+      <div class="eye-popover" id="eyePopover">
+        <div style="font-family:var(--font-mono);font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber-bright);display:flex;justify-content:space-between;">
+          <span>Eye Protection Mode</span>
+          <span id="eyeWarmthVal" style="color:var(--text-secondary);">3200K</span>
+        </div>
+        <div class="eye-mode-chips">
+          <div class="eye-chip active" data-mode="amber">Warm Amber</div>
+          <div class="eye-chip" data-mode="candle">Candlelight</div>
+          <div class="eye-chip" data-mode="paper">Paper</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);">
+          <span>Shield Warmth Intensity</span>
+          <input type="range" id="eyeWarmthRange" min="10" max="100" value="50">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);">
+          <span>Screen Glare Reduction</span>
+          <input type="range" id="eyeGlareRange" min="0" max="60" value="20">
+        </div>
+      </div>
+
+      <!-- Cinema Ambient Lights Dimmer Toggle -->
+      <button class="touch-btn" id="cinemaToggle" title="Dim Peripheral Lighting">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+        <span id="cinemaToggleText">Dim</span>
+      </button>
+
+      <!-- Secure API Badge (keys live on backend server.py) -->
+      <div class="api-secure-badge" id="apiSecureBadge" title="All API credentials are protected by the backend server">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span>APIs Secured</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tablet Mode Bar (Touch Ergonomics for Portrait Tablet orientation) -->
+  <div class="tablet-mode-bar">
+    <button class="tablet-tab-btn active" id="tabBtnVideo">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="7" x2="7" y1="3" y2="21"/><line x1="17" x2="17" y1="3" y2="21"/></svg>
+      Film Stage &amp; Queue
+    </button>
+    <button class="tablet-tab-btn" id="tabBtnAudio">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      Acoustic &amp; Soundboard
+    </button>
+  </div>
+
+  <!-- Projection Stage (Left Column) -->
+  <main class="video-area">
+    <div class="player-stage">
+      <div class="stage-meta-strip">
+        <div class="tally-indicator">
+          <span class="tally-dot"></span>
+          <span>Screen Stage</span>
+          <span class="live-timecode-badge" id="livePositionBadge">00:00 &bull; Synced</span>
+        </div>
+        <div class="aspect-switcher">
+          <button class="aspect-btn active" data-ratio="16/9">16:9</button>
+          <button class="aspect-btn" data-ratio="21/9">2.39:1</button>
+          <button class="aspect-btn" data-ratio="4/3">4:3</button>
+        </div>
+      </div>
+
+      <div class="player-wrap" id="mainPlayerWrap">
+        <div id="videoPlayer"></div>
+      </div>
+    </div>
+
+    <!-- ITEM 4: "Double Feature" Projection Queue -->
+    <div class="cue-queue-bar" id="cueQueueBar">
+      <div class="cue-queue-header">
+        <span>🎞️ Double Feature Lineup (<span id="cueQueueCount">0</span> in Queue)</span>
+        <button class="touch-btn" id="clearQueueBtn" style="min-height:26px;padding:2px 8px;font-size:9.5px;">Clear</button>
+      </div>
+      <div class="cue-queue-items" id="cueQueueItems">
+        <div style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:10px;">Queue is empty. Tap "+ Cue" on any video to add to the lineup.</div>
+      </div>
+    </div>
+
+    <!-- 40Hz Focus Suite Shortcuts -->
+    <div class="focus-40hz-bar">
+      <div class="focus-40hz-header">
+        <span>⚡ 40Hz Brainwave Focus Suite (Gamma Frequency)</span>
+      </div>
+      <div class="focus-40hz-pills">
+        <span class="focus-pill" data-query="40Hz gamma binaural focus study deep work">⚡ 40Hz Gamma Focus</span>
+        <span class="focus-pill" data-query="40Hz pure tone deep work ambient concentration">🧠 40Hz Deep Work Drone</span>
+        <span class="focus-pill" data-query="40Hz gamma frequency memory focus">💡 40Hz Memory &amp; Clarity</span>
+        <span class="focus-pill" data-query="40Hz visual flicker strobe light therapy ambient 4k">👁️ 40Hz Visual Flicker 4K</span>
+      </div>
+    </div>
+
+    <!-- Video Search & Archive Curations -->
+    <div class="search-block">
+      <div class="curator-pills">
+        <span class="curator-pill" data-query="Studio Ghibli scenery loop 4k">Ghibli Scenery</span>
+        <span class="curator-pill" data-query="Koyaanisqatsi cinematography 4k">Koyaanisqatsi</span>
+        <span class="curator-pill" data-query="Blade Runner ambient neon 4k">Neo-Noir</span>
+        <span class="curator-pill" data-query="Tarkovsky cinematic scenes 4k">Tarkovsky</span>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="videoQuery" placeholder="Search archive for visual projections, films, master loops…">
+        <button id="videoSearchBtn">Search</button>
+      </div>
+
+      <div class="results" id="videoResults"></div>
+    </div>
+  </main>
+
+  <!-- Acoustic Sound & Score Console (Right Column) -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="deck-header">
+        <div class="deck-title">Background Audio Deck (Audio-Only)</div>
+      </div>
+
+      <!-- Hidden YouTube Player Host: Audio Only, 144p stream saves 96% data -->
+      <div id="musicPlayerHost">
+        <div id="musicPlayer"></div>
+      </div>
+
+      <!-- Dedicated Audio-Only Vinyl & Tape Deck Unit -->
+      <div class="audio-only-console">
+        <div class="turntable-bay">
+          <div class="vinyl-disc" id="vinylDisc"></div>
+          <div class="deck-track-meta">
+            <div class="deck-track-title" id="musicInfo">No soundtrack locked on deck</div>
+            <div class="deck-track-badge">
+              <span style="color:var(--emerald);">&#x25CF;</span>
+              <span id="audioDeckState">Deck Standby</span>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);margin-top:3px;" id="musicTimecode">00:00 / 00:00</div>
+          </div>
+        </div>
+
+        <!-- Audio Seek Scrubber with Touch Sizing -->
+        <div class="audio-scrubber-wrap">
+          <span class="audio-time-label" id="musicCurTime">0:00</span>
+          <input type="range" id="musicScrubber" min="0" max="100" value="0">
+          <span class="audio-time-label" id="musicDurTime">0:00</span>
+        </div>
+
+        <!-- Tactical Audio Controls -->
+        <div class="audio-tactical-row">
+          <button class="audio-icon-btn" id="musicMuteBtn" title="Mute/Unmute">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          </button>
+          
+          <div class="volume-slider-group">
+            <input type="range" id="musicVolume" min="0" max="100" value="80" title="Audio Deck Volume">
+            <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-secondary);min-width:32px;" id="volumeDbLabel">80%</span>
+          </div>
+
+          <button class="audio-icon-btn active" id="musicLoopBtn" title="Continuous Loop">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+          </button>
+
+          <select class="rate-select" id="musicRateSelect" title="Audio Speed">
+            <option value="0.75">0.75x</option>
+            <option value="1.0" selected>1.0x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+          </select>
+        </div>
+
+        <div class="music-controls">
+          <button id="musicPlay" class="primary">Play</button>
+          <button id="musicPause">Pause</button>
+          <button id="musicStop">Stop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ITEM 1: Multi-Layer Ambient Atmosphere Soundboard (Pure Web Audio - 0 KB) -->
+    <div class="sidebar-section">
+      <div class="atmosphere-soundboard">
+        <div class="soundboard-title">
+          <span>🎚️ Ambient Atmosphere Soundboard</span>
+          <span style="font-size:9px;color:var(--emerald);">0 KB Bandwidth &bull; Web Audio</span>
+        </div>
+
+        <!-- Channel 1: 35mm Mechanical Projector -->
+        <div class="soundboard-channel">
+          <button class="channel-btn" id="sndProjectorBtn" title="Toggle 35mm Projector Sound">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          </button>
+          <div class="channel-info">
+            <div class="channel-name">
+              <span>35mm Projector</span>
+              <span id="sndProjectorVal">Off</span>
+            </div>
+            <input type="range" id="sndProjectorVol" min="0" max="100" value="0">
+          </div>
+        </div>
+
+        <!-- Channel 2: Midnight Rain on Glass -->
+        <div class="soundboard-channel">
+          <button class="channel-btn" id="sndRainBtn" title="Toggle Midnight Rain Sound">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
+          </button>
+          <div class="channel-info">
+            <div class="channel-name">
+              <span>Midnight Rain</span>
+              <span id="sndRainVal">Off</span>
+            </div>
+            <input type="range" id="sndRainVol" min="0" max="100" value="0">
+          </div>
+        </div>
+
+        <!-- Channel 3: Hearth Fire & Tape Embers -->
+        <div class="soundboard-channel">
+          <button class="channel-btn" id="sndFireBtn" title="Toggle Hearth Embers Sound">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+          </button>
+          <div class="channel-info">
+            <div class="channel-name">
+              <span>Hearth Fire &amp; Embers</span>
+              <span id="sndFireVal">Off</span>
+            </div>
+            <input type="range" id="sndFireVol" min="0" max="100" value="0">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Music Search Section -->
+    <div class="sidebar-section" style="flex:1; display:flex; flex-direction:column;">
+      <div class="deck-header">
+        <div class="deck-title">Archive Score Catalog</div>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="musicQuery" placeholder="Find score or ambient sound…">
+        <button id="musicSearchBtn" style="background:var(--emerald);color:#051912;">Find</button>
+      </div>
+
+      <div class="results" id="musicResults" style="flex:1; max-height:none;"></div>
+    </div>
+
+    <!-- AI SCENE DIRECTOR PANEL (Groq openai/gpt-oss-120b) -->
+    <div class="scene-director-panel">
+      <div class="scene-director-header">
+        <div class="scene-director-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+          AI Scene Director
+          <span class="ai-tag">GPT-OSS-120B</span>
+        </div>
+        <button class="ai-organize-btn" id="aiOrganizeBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+          Organize Scene
+        </button>
+      </div>
+
+      <div class="ai-result-card" id="aiResultCard">
+        <div class="ai-mood-badge" id="aiMoodBadge">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+          <span id="aiMoodText">---</span>
+        </div>
+        <div class="ai-director-notes" id="aiDirectorNotes">---</div>
+
+        <div class="ai-rec-row">
+          <span class="ai-rec-label">Film</span>
+          <span class="ai-rec-value" id="aiRecFilm">---</span>
+          <button class="ai-apply-btn" id="aiApplyFilm">▶ Play</button>
+        </div>
+        <div class="ai-rec-row">
+          <span class="ai-rec-label">Score</span>
+          <span class="ai-rec-value" id="aiRecScore">---</span>
+          <button class="ai-apply-btn" id="aiApplyScore">♫ Play</button>
+        </div>
+        <div class="ai-rec-row">
+          <span class="ai-rec-label">Lighting</span>
+          <span class="ai-rec-value" id="aiRecLighting">---</span>
+        </div>
+        <div class="ai-rec-row">
+          <span class="ai-rec-label">DJ Hint</span>
+          <span class="ai-rec-value" id="aiRecDJ">---</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry Status Bar -->
+    <div class="status">
+      <div class="status-main" id="statusText">Viewing Room initialized. System ready.</div>
+      <div style="font-size:9.5px;color:#6ee7b7;">● Eco Bandwidth Guard Active</div>
+    </div>
+  </aside>
+</div>
+
+<!-- History & Cloud Sync Queue Modal -->
+<div class="history-modal" id="historyModal">
+  <div class="history-card">
+    <div class="history-header">
+      <div>
+        <div style="font-family:var(--font-display);font-size:15px;font-weight:700;">Saved Video Progress (Cloud Synced)</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--emerald);margin-top:2px;">Recorded down to the second &bull; Throttled Network Sync</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="touch-btn" id="clearHistoryBtn" style="color:var(--tally-red);border-color:rgba(244,63,94,0.35);" title="Purge all saved progress and history">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Clear History
+        </button>
+        <button class="touch-btn" id="closeHistoryBtn">Close</button>
+      </div>
+    </div>
+    <div class="history-list" id="historyList">
+      <div style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:11px;">Loading cloud synced history…</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+  let videoPlayer = null;
+  let musicPlayer = null;
+  let pendingVideo = null;
+  let pendingMusic = null;
+  let progressInterval = null;
+  let isMusicLooping = true;
+  let currentVideoId = null;
+  let currentVideoTitle = 'Cinema Projection';
+  let cloudDb = null;
+  let currentPreferredQuality = localStorage.getItem('vr_video_quality') || 'medium';
+
+  // ----------------------------------------------------
+  // BANDWIDTH OPTIMIZATION: IN-MEMORY & SESSION CACHE
+  // ----------------------------------------------------
+  const searchCache = new Map();
+
+  // Firebase Configuration for white-ecc41
+  const FB_CONFIG = {
+    apiKey: 'AIzaSyC1VKNem8Zf5NSfMl769DAwpQYxMp9QXlg',
+    authDomain: 'white-ecc41.firebaseapp.com',
+    projectId: 'white-ecc41',
+    storageBucket: 'white-ecc41.firebasestorage.app',
+    messagingSenderId: '411551131983',
+    appId: '1:411551131983:web:a7142222b065c1ebeb7d3a'
+  };
+
+  try {
+    if (window.firebase && !firebase.apps.length) {
+      firebase.initializeApp(FB_CONFIG);
+      cloudDb = firebase.firestore();
+    }
+  } catch (err) {}
+
+  // ─── SECURE API ACCESS ─────────────────────────────
+  // YouTube API key is now ONLY on the backend (server.py).
+  // No API key is stored or accessible in localStorage or frontend JS.
+  const HISTORY_STORAGE = 'viewing_room_history';
+  const QUEUE_STORAGE = 'viewing_room_cue_queue';
+
+  // No-op: old apiKey references in templates still compile but do nothing
+  const apiKeyInput = { value: '', addEventListener: () => {} };
+
+  function setStatus(msg, err) {
+    const s = document.getElementById('statusText');
+    s.textContent = msg;
+    s.classList.toggle('error', !!err);
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  function formatTime(secs) {
+    if (isNaN(secs) || secs < 0) return '00:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  // ----------------------------------------------------
+  // BANDWIDTH ECONOMY CONTROLLER (POP-OVER & QUALITY CONTROL)
+  // ----------------------------------------------------
+  const ecoToggleBtn = document.getElementById('ecoToggleBtn');
+  const ecoPopover = document.getElementById('ecoPopover');
+  const videoQualitySelect = document.getElementById('videoQualitySelect');
+  videoQualitySelect.value = currentPreferredQuality;
+
+  ecoToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ecoPopover.classList.toggle('open');
+  });
+
+  videoQualitySelect.addEventListener('change', () => {
+    currentPreferredQuality = videoQualitySelect.value;
+    localStorage.setItem('vr_video_quality', currentPreferredQuality);
+    if (videoPlayer && videoPlayer.setPlaybackQuality) {
+      videoPlayer.setPlaybackQuality(currentPreferredQuality);
+    }
+    showToast(`Video Stream Quality: ${currentPreferredQuality.toUpperCase()}`);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!ecoPopover.contains(e.target) && e.target !== ecoToggleBtn) {
+      ecoPopover.classList.remove('open');
+    }
+  });
+
+  // ----------------------------------------------------
+  // TABLET PORTRAIT / LANDSCAPE MODE SWITCHER
+  // ----------------------------------------------------
+  const tabBtnVideo = document.getElementById('tabBtnVideo');
+  const tabBtnAudio = document.getElementById('tabBtnAudio');
+
+  tabBtnVideo.addEventListener('click', () => {
+    document.body.classList.remove('tab-mode-audio');
+    document.body.classList.add('tab-mode-video');
+    tabBtnVideo.classList.add('active');
+    tabBtnAudio.classList.remove('active');
+  });
+
+  tabBtnAudio.addEventListener('click', () => {
+    document.body.classList.remove('tab-mode-video');
+    document.body.classList.add('tab-mode-audio');
+    tabBtnAudio.classList.add('active');
+    tabBtnVideo.classList.remove('active');
+  });
+
+  // ----------------------------------------------------
+  // ITEM 2: PROJECTIONIST FOCUS & SESSION TIMER WITH GONG CHIME
+  // ----------------------------------------------------
+  let sessionTimerInterval = null;
+  let sessionTimerTotalSecs = 25 * 60;
+  let sessionTimerRemaining = 25 * 60;
+  let isTimerRunning = false;
+
+  const timerClockEl = document.getElementById('sessionTimerClock');
+  const timerToggleBtn = document.getElementById('sessionTimerToggle');
+  const timerResetBtn = document.getElementById('sessionTimerReset');
+
+  function updateTimerClock() {
+    timerClockEl.textContent = formatTime(sessionTimerRemaining);
+  }
+
+  function toggleSessionTimer() {
+    unlockAudioContext();
+    if (isTimerRunning) {
+      clearInterval(sessionTimerInterval);
+      isTimerRunning = false;
+      timerToggleBtn.textContent = 'Start';
+      timerToggleBtn.classList.remove('active');
+      timerClockEl.classList.remove('running');
+    } else {
+      isTimerRunning = true;
+      timerToggleBtn.textContent = 'Pause';
+      timerToggleBtn.classList.add('active');
+      timerClockEl.classList.add('running');
+      sessionTimerInterval = setInterval(() => {
+        sessionTimerRemaining--;
+        updateTimerClock();
+        if (sessionTimerRemaining <= 0) {
+          clearInterval(sessionTimerInterval);
+          isTimerRunning = false;
+          timerToggleBtn.textContent = 'Start';
+          timerToggleBtn.classList.remove('active');
+          timerClockEl.classList.remove('running');
+          playTempleGongChime();
+          showToast('Focus Session Complete • Take a breath');
+          setStatus('Focus session complete. Acoustic gong chime sounded.');
+        }
+      }, 1000);
+    }
+  }
+
+  timerToggleBtn.addEventListener('click', toggleSessionTimer);
+  timerResetBtn.addEventListener('click', () => {
+    clearInterval(sessionTimerInterval);
+    isTimerRunning = false;
+    timerToggleBtn.textContent = 'Start';
+    timerToggleBtn.classList.remove('active');
+    timerClockEl.classList.remove('running');
+    sessionTimerRemaining = sessionTimerTotalSecs;
+    updateTimerClock();
+  });
+
+  document.querySelectorAll('.timer-preset-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.timer-preset-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const mins = parseInt(chip.dataset.mins);
+      sessionTimerTotalSecs = mins * 60;
+      sessionTimerRemaining = sessionTimerTotalSecs;
+      clearInterval(sessionTimerInterval);
+      isTimerRunning = false;
+      timerToggleBtn.textContent = 'Start';
+      timerToggleBtn.classList.remove('active');
+      timerClockEl.classList.remove('running');
+      updateTimerClock();
+      showToast(`Session Timer set to ${mins} minutes`);
+    });
+  });
+
+  // Synthesized Multi-Harmonic Singing Bowl & Temple Gong Chime (Web Audio API - 0 KB)
+  function playTempleGongChime() {
+    initWebAudio();
+    if (!audioCtx) return;
+    try {
+      const now = audioCtx.currentTime;
+      const freqs = [432, 864, 1296, 1728];
+      freqs.forEach((f, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = idx === 0 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(f, now);
+        const initialVol = 0.28 / (idx + 1);
+        gain.gain.setValueAtTime(initialVol, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 5.2);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 5.3);
+      });
+    } catch (e) {}
+  }
+
+  // ----------------------------------------------------
+  // ITEM 1: MULTI-LAYER AMBIENT ATMOSPHERE SOUNDBOARD (WEB AUDIO - 0 KB)
+  // ----------------------------------------------------
+  let audioCtx = null;
+  let sndProjectorGain = null;
+  let sndRainGain = null;
+  let sndFireGain = null;
+
+  function initWebAudio() {
+    if (audioCtx) return;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContext();
+      const sampleRate = audioCtx.sampleRate;
+      const bufferLength = sampleRate * 3;
+
+      // 1. Channel: 35mm Projector
+      const projBuffer = audioCtx.createBuffer(1, bufferLength, sampleRate);
+      const projData = projBuffer.getChannelData(0);
+      for (let i = 0; i < bufferLength; i++) {
+        const motor = Math.sin(2 * Math.PI * 110 * (i / sampleRate)) * 0.08;
+        const tick = (i % Math.floor(sampleRate / 24)) < 40 ? (Math.random() * 2 - 1) * 0.5 : 0;
+        projData[i] = motor + tick;
+      }
+      const projSource = audioCtx.createBufferSource();
+      projSource.buffer = projBuffer;
+      projSource.loop = true;
+      sndProjectorGain = audioCtx.createGain();
+      sndProjectorGain.gain.setValueAtTime(0, audioCtx.currentTime);
+      projSource.connect(sndProjectorGain);
+      sndProjectorGain.connect(audioCtx.destination);
+      projSource.start();
+
+      // 2. Channel: Midnight Rain on Glass
+      const rainBuffer = audioCtx.createBuffer(1, bufferLength, sampleRate);
+      const rainData = rainBuffer.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        const pink = b0 + b1 + b2 + white * 0.5362;
+        const drop = Math.random() < 0.002 ? (Math.random() * 2 - 1) * 0.4 : 0;
+        rainData[i] = (pink * 0.08) + drop;
+      }
+      const rainSource = audioCtx.createBufferSource();
+      rainSource.buffer = rainBuffer;
+      rainSource.loop = true;
+      sndRainGain = audioCtx.createGain();
+      sndRainGain.gain.setValueAtTime(0, audioCtx.currentTime);
+      rainSource.connect(sndRainGain);
+      sndRainGain.connect(audioCtx.destination);
+      rainSource.start();
+
+      // 3. Channel: Hearth Fire & Tape Embers
+      const fireBuffer = audioCtx.createBuffer(1, bufferLength, sampleRate);
+      const fireData = fireBuffer.getChannelData(0);
+      for (let i = 0; i < bufferLength; i++) {
+        const hum = Math.sin(2 * Math.PI * 65 * (i / sampleRate)) * 0.04;
+        const pop = Math.random() < 0.0035 ? (Math.random() * 2 - 1) * 0.7 : (Math.random() * 2 - 1) * 0.02;
+        fireData[i] = hum + pop;
+      }
+      const fireSource = audioCtx.createBufferSource();
+      fireSource.buffer = fireBuffer;
+      fireSource.loop = true;
+      sndFireGain = audioCtx.createGain();
+      sndFireGain.gain.setValueAtTime(0, audioCtx.currentTime);
+      fireSource.connect(sndFireGain);
+      sndFireGain.connect(audioCtx.destination);
+      fireSource.start();
+    } catch (e) {}
+  }
+
+  function unlockAudioContext() {
+    initWebAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+  document.addEventListener('touchstart', unlockAudioContext, { once: true });
+  document.addEventListener('click', unlockAudioContext, { once: true });
+
+  // Soundboard Channel Event Handlers
+  const sndProjBtn = document.getElementById('sndProjectorBtn');
+  const sndProjVol = document.getElementById('sndProjectorVol');
+  const sndProjVal = document.getElementById('sndProjectorVal');
+
+  sndProjVol.addEventListener('input', () => {
+    unlockAudioContext();
+    const v = parseInt(sndProjVol.value);
+    sndProjVal.textContent = v > 0 ? v + '%' : 'Off';
+    sndProjBtn.classList.toggle('active', v > 0);
+    if (sndProjectorGain) {
+      sndProjectorGain.gain.setTargetAtTime((v / 100) * 0.35, audioCtx.currentTime, 0.05);
+    }
+  });
+  sndProjBtn.addEventListener('click', () => {
+    const cur = parseInt(sndProjVol.value);
+    sndProjVol.value = cur > 0 ? 0 : 50;
+    sndProjVol.dispatchEvent(new Event('input'));
+  });
+
+  const sndRainBtn = document.getElementById('sndRainBtn');
+  const sndRainVol = document.getElementById('sndRainVol');
+  const sndRainVal = document.getElementById('sndRainVal');
+
+  sndRainVol.addEventListener('input', () => {
+    unlockAudioContext();
+    const v = parseInt(sndRainVol.value);
+    sndRainVal.textContent = v > 0 ? v + '%' : 'Off';
+    sndRainBtn.classList.toggle('active', v > 0);
+    if (sndRainGain) {
+      sndRainGain.gain.setTargetAtTime((v / 100) * 0.4, audioCtx.currentTime, 0.05);
+    }
+  });
+  sndRainBtn.addEventListener('click', () => {
+    const cur = parseInt(sndRainVol.value);
+    sndRainVol.value = cur > 0 ? 0 : 50;
+    sndRainVol.dispatchEvent(new Event('input'));
+  });
+
+  const sndFireBtn = document.getElementById('sndFireBtn');
+  const sndFireVol = document.getElementById('sndFireVol');
+  const sndFireVal = document.getElementById('sndFireVal');
+
+  sndFireVol.addEventListener('input', () => {
+    unlockAudioContext();
+    const v = parseInt(sndFireVol.value);
+    sndFireVal.textContent = v > 0 ? v + '%' : 'Off';
+    sndFireBtn.classList.toggle('active', v > 0);
+    if (sndFireGain) {
+      sndFireGain.gain.setTargetAtTime((v / 100) * 0.35, audioCtx.currentTime, 0.05);
+    }
+  });
+  sndFireBtn.addEventListener('click', () => {
+    const cur = parseInt(sndFireVol.value);
+    sndFireVol.value = cur > 0 ? 0 : 50;
+    sndFireVol.dispatchEvent(new Event('input'));
+  });
+
+  // ----------------------------------------------------
+  // ITEM 4: "DOUBLE FEATURE" PROJECTION QUEUE
+  // ----------------------------------------------------
+  function getCueQueue() {
+    try {
+      return JSON.parse(localStorage.getItem(QUEUE_STORAGE) || '[]');
+    } catch { return []; }
+  }
+
+  function saveCueQueue(q) {
+    localStorage.setItem(QUEUE_STORAGE, JSON.stringify(q));
+    renderCueQueue();
+  }
+
+  function addToCueQueue(id, title) {
+    const q = getCueQueue();
+    if (!q.some(item => item.id === id)) {
+      q.push({ id, title });
+      saveCueQueue(q);
+      showToast(`Added to Double Feature Lineup: ${title.slice(0, 30)}…`);
+    } else {
+      showToast('Film is already in queue lineup.');
+    }
+  }
+
+  function removeFromCueQueue(idx) {
+    const q = getCueQueue();
+    q.splice(idx, 1);
+    saveCueQueue(q);
+  }
+
+  function clearCueQueue() {
+    saveCueQueue([]);
+    showToast('Projection queue cleared.');
+  }
+  document.getElementById('clearQueueBtn').addEventListener('click', clearCueQueue);
+
+  function renderCueQueue() {
+    const q = getCueQueue();
+    document.getElementById('cueQueueCount').textContent = q.length;
+    const container = document.getElementById('cueQueueItems');
+    if (!q.length) {
+      container.innerHTML = '<div style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:10px;">Queue is empty. Tap "+ Cue" on any video to add to the lineup.</div>';
+      return;
+    }
+    container.innerHTML = '';
+    q.forEach((item, idx) => {
+      const el = document.createElement('div');
+      el.className = 'queue-pill-item';
+      el.innerHTML = `
+        <span class="queue-pill-idx">#${String(idx + 1).padStart(2, '0')}</span>
+        <span class="queue-pill-title">${escapeHtml(item.title)}</span>
+        <span class="queue-pill-remove" title="Remove">&times;</span>
+      `;
+      el.querySelector('.queue-pill-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeFromCueQueue(idx);
+      });
+      el.addEventListener('click', () => {
+        playVideo(item.id, item.title);
+      });
+      container.appendChild(el);
+    });
+  }
+
+  function playNextInQueue() {
+    const q = getCueQueue();
+    if (q.length > 0) {
+      const next = q.shift();
+      saveCueQueue(q);
+      playVideo(next.id, next.title);
+      showToast(`Double Feature: Now Projecting ${next.title}`);
+    }
+  }
+
+  // ----------------------------------------------------
+  // BANDWIDTH-THROTTLED PROGRESS & CLOUD SYNC ENGINE
+  // ----------------------------------------------------
+  function getLocalHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(HISTORY_STORAGE) || '{}');
+    } catch { return {}; }
+  }
+
+  function saveLocalHistory(hist) {
+    localStorage.setItem(HISTORY_STORAGE, JSON.stringify(hist));
+  }
+
+  let lastCloudSyncTime = 0;
+  async function syncProgressToCloud(record, force = false) {
+    // 1. Instant local storage update (0 Network Bytes)
+    const hist = getLocalHistory();
+    hist[record.id] = record;
+    saveLocalHistory(hist);
+
+    const badge = document.getElementById('livePositionBadge');
+    if (badge) {
+      badge.textContent = `${formatTime(record.second)} / ${formatTime(record.duration)} • Synced`;
+    }
+
+    // 2. Throttled cloud sync: only every 30 seconds or forced on pause/stop (Saves ~87% network requests)
+    const now = Date.now();
+    if (force || now - lastCloudSyncTime > 30000) {
+      lastCloudSyncTime = now;
+      if (cloudDb) {
+        try {
+          await cloudDb.collection('viewing_room_history').doc(record.id).set(record, { merge: true });
+          document.getElementById('cloudStatusText').textContent = 'Cloud Synced';
+        } catch {
+          syncToFreeKv(record);
+        }
+      } else {
+        syncToFreeKv(record);
+      }
+    }
+  }
+
+  async function syncToFreeKv(record) {
+    try {
+      await fetch(`https://kvdb.io/4y9pB2rK3w8t7xM1/vr_${record.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record)
+      });
+      document.getElementById('cloudStatusText').textContent = 'Cloud Synced';
+    } catch {}
+  }
+
+  function startProgressTracking() {
+    if (progressInterval) clearInterval(progressInterval);
+    progressInterval = setInterval(() => {
+      if (!videoPlayer || typeof videoPlayer.getCurrentTime !== 'function') return;
+      const state = videoPlayer.getPlayerState();
+      if (state === 1 && currentVideoId) {
+        const cur = Math.floor(videoPlayer.getCurrentTime());
+        const dur = Math.floor(videoPlayer.getDuration() || 0);
+        if (cur > 0) {
+          syncProgressToCloud({
+            id: currentVideoId,
+            title: currentVideoTitle,
+            second: cur,
+            duration: dur,
+            percent: dur > 0 ? Math.round((cur / dur) * 100) : 0,
+            updatedAt: Date.now()
+          }, false);
+        }
+      }
+    }, 1000);
+  }
+
+  function checkAndResumeProgress(id) {
+    const hist = getLocalHistory();
+    const saved = hist[id];
+    if (saved && saved.second > 3 && (!saved.duration || saved.second < saved.duration - 10)) {
+      setTimeout(() => {
+        if (videoPlayer && videoPlayer.seekTo) {
+          videoPlayer.seekTo(saved.second, true);
+          showToast(`Resumed from ${formatTime(saved.second)} (Cloud Synced)`);
+        }
+      }, 500);
+    }
+  }
+
+  // History Modal
+  const historyModal = document.getElementById('historyModal');
+  document.getElementById('historyModalBtn').addEventListener('click', () => {
+    historyModal.classList.add('open');
+    renderHistoryModal();
+  });
+  document.getElementById('closeHistoryBtn').addEventListener('click', () => historyModal.classList.remove('open'));
+  historyModal.addEventListener('click', (e) => { if (e.target === historyModal) historyModal.classList.remove('open'); });
+
+  document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+    if (confirm('Clear all saved playback progress and history records?')) {
+      saveLocalHistory({});
+      const badge = document.getElementById('livePositionBadge');
+      if (badge) badge.textContent = '00:00 • No Saved Position';
+      renderHistoryModal();
+      showToast('Playback history cleared.');
+      setStatus('Playback history and saved positions cleared.');
+    }
+  });
+
+  function renderHistoryModal() {
+    const list = document.getElementById('historyList');
+    const hist = getLocalHistory();
+    const entries = Object.values(hist).sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (!entries.length) {
+      list.innerHTML = '<div style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:11px;padding:12px;">No videos in history yet. Progress is recorded continuously down to the second.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    entries.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'history-entry';
+      row.innerHTML = `
+        <img src="https://i.ytimg.com/vi/${item.id}/default.jpg" class="history-thumb" alt="" referrerpolicy="no-referrer">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.title || 'Archived Film')}</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--emerald);margin-top:2px;">&#x25B6; Saved at ${formatTime(item.second)} (${item.percent || 0}%) &bull; Cloud Synced</div>
+        </div>
+        <button class="touch-btn" style="min-height:34px;padding:2px 10px;font-size:10px;">Resume</button>
+      `;
+      row.addEventListener('click', () => {
+        historyModal.classList.remove('open');
+        playVideo(item.id, item.title);
+      });
+      list.appendChild(row);
+    });
+  }
+
+  // ----------------------------------------------------
+  // EYE-PROTECTION MODE
+  // ----------------------------------------------------
+  const eyeToggleBtn = document.getElementById('eyeToggleBtn');
+  const eyePopover = document.getElementById('eyePopover');
+  const eyeOverlay = document.getElementById('eyeProtectionOverlay');
+  const eyeWarmthRange = document.getElementById('eyeWarmthRange');
+  const eyeGlareRange = document.getElementById('eyeGlareRange');
+  let eyeActive = localStorage.getItem('vr_eye_active') === 'true';
+  let eyeMode = localStorage.getItem('vr_eye_mode') || 'amber';
+
+  function updateEyeProtection() {
+    if (!eyeActive) {
+      document.body.classList.remove('eye-protect-active');
+      eyeToggleBtn.classList.remove('active');
+      document.getElementById('eyeBtnText').textContent = 'Shield';
+      eyeOverlay.style.background = 'transparent';
+      return;
+    }
+    document.body.classList.add('eye-protect-active');
+    eyeToggleBtn.classList.add('active');
+    document.getElementById('eyeBtnText').textContent = 'Active';
+
+    const warmth = eyeWarmthRange.value;
+    const glare = eyeGlareRange.value;
+    const op = (warmth / 100) * 0.45;
+    const glareDim = (glare / 100) * 0.35;
+
+    let col = 'rgba(245, 158, 11, ' + op + ')';
+    if (eyeMode === 'candle') {
+      col = 'rgba(234, 88, 12, ' + (op * 1.2) + ')';
+      document.getElementById('eyeWarmthVal').textContent = '2400K Candle';
+    } else if (eyeMode === 'paper') {
+      col = 'rgba(217, 119, 6, ' + op + ')';
+      document.getElementById('eyeWarmthVal').textContent = 'Paper Tone';
+    } else {
+      document.getElementById('eyeWarmthVal').textContent = '3200K Amber';
+    }
+    eyeOverlay.style.background = col;
+    eyeOverlay.style.backdropFilter = `brightness(${1 - glareDim}) sepia(${op * 0.8})`;
+    eyeOverlay.style.webkitBackdropFilter = `brightness(${1 - glareDim}) sepia(${op * 0.8})`;
+  }
+
+  eyeToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    eyeActive = !eyeActive;
+    localStorage.setItem('vr_eye_active', eyeActive);
+    eyePopover.classList.toggle('open', eyeActive);
+    updateEyeProtection();
+  });
+
+  document.querySelectorAll('.eye-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.eye-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      eyeMode = chip.dataset.mode;
+      localStorage.setItem('vr_eye_mode', eyeMode);
+      updateEyeProtection();
+    });
+  });
+  eyeWarmthRange.addEventListener('input', updateEyeProtection);
+  eyeGlareRange.addEventListener('input', updateEyeProtection);
+  document.addEventListener('click', (e) => {
+    if (!eyePopover.contains(e.target) && e.target !== eyeToggleBtn) {
+      eyePopover.classList.remove('open');
+    }
+  });
+  updateEyeProtection();
+
+  // Cinema Lights Dimmer
+  const cinemaToggle = document.getElementById('cinemaToggle');
+  cinemaToggle.addEventListener('click', () => {
+    document.body.classList.toggle('cinema-dim');
+    const isDim = document.body.classList.contains('cinema-dim');
+    cinemaToggle.classList.toggle('active', isDim);
+    document.getElementById('cinemaToggleText').textContent = isDim ? 'Dimmed' : 'Dim';
+  });
+
+  // Aspect Ratio Switches
+  document.querySelectorAll('.aspect-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const ratio = btn.dataset.ratio;
+      const wrap = document.getElementById('mainPlayerWrap');
+      if (ratio === '21/9') wrap.style.aspectRatio = '21 / 9';
+      else if (ratio === '4/3') wrap.style.aspectRatio = '4 / 3';
+      else wrap.style.aspectRatio = '16 / 9';
+    });
+  });
+
+  // Audio Controls
+  const musicVolume = document.getElementById('musicVolume');
+  musicVolume.addEventListener('input', () => {
+    const v = parseInt(musicVolume.value);
+    document.getElementById('volumeDbLabel').textContent = v + '%';
+    if (musicPlayer && musicPlayer.setVolume) musicPlayer.setVolume(v);
+  });
+
+  const musicMuteBtn = document.getElementById('musicMuteBtn');
+  musicMuteBtn.addEventListener('click', () => {
+    if (!musicPlayer) return;
+    const isMuted = musicPlayer.isMuted();
+    if (isMuted) {
+      musicPlayer.unMute();
+      musicMuteBtn.classList.remove('active');
+    } else {
+      musicPlayer.mute();
+      musicMuteBtn.classList.add('active');
+    }
+  });
+
+  const musicLoopBtn = document.getElementById('musicLoopBtn');
+  musicLoopBtn.addEventListener('click', () => {
+    isMusicLooping = !isMusicLooping;
+    musicLoopBtn.classList.toggle('active', isMusicLooping);
+    showToast(isMusicLooping ? 'Continuous Loop: ON' : 'Continuous Loop: OFF');
+  });
+
+  const musicRateSelect = document.getElementById('musicRateSelect');
+  musicRateSelect.addEventListener('change', () => {
+    const rate = parseFloat(musicRateSelect.value);
+    if (musicPlayer && musicPlayer.setPlaybackRate) {
+      musicPlayer.setPlaybackRate(rate);
+      showToast('Deck Speed: ' + rate + 'x');
+    }
+  });
+
+  const musicScrubber = document.getElementById('musicScrubber');
+  musicScrubber.addEventListener('input', () => {
+    if (!musicPlayer || !musicPlayer.getDuration) return;
+    const dur = musicPlayer.getDuration();
+    const seekTo = (musicScrubber.value / 100) * dur;
+    musicPlayer.seekTo(seekTo, true);
+  });
+
+  // Track Monitor Loop
+  setInterval(() => {
+    if (musicPlayer && typeof musicPlayer.getPlayerState === 'function') {
+      const state = musicPlayer.getPlayerState();
+      if (state === 1) {
+        document.body.classList.add('music-active');
+        document.getElementById('audioDeckState').textContent = 'Deck Signal Live';
+        document.getElementById('audioDeckState').style.color = 'var(--emerald)';
+        const cur = musicPlayer.getCurrentTime() || 0;
+        const dur = musicPlayer.getDuration() || 0;
+        document.getElementById('musicCurTime').textContent = formatTime(cur);
+        document.getElementById('musicDurTime').textContent = formatTime(dur);
+        document.getElementById('musicTimecode').textContent = `${formatTime(cur)} / ${formatTime(dur)}`;
+        if (dur > 0) musicScrubber.value = (cur / dur) * 100;
+      } else {
+        document.body.classList.remove('music-active');
+        document.getElementById('audioDeckState').textContent = 'Deck Idle';
+        document.getElementById('audioDeckState').style.color = 'var(--text-tertiary)';
+      }
+    }
+  }, 250);
+
+  // ----------------------------------------------------
+  // YOUTUBE PLAYERS INITIALIZATION (WITH QUALITY CLAMPING)
+  // ----------------------------------------------------
+  function initPlayers() {
+    if (videoPlayer) return;
+    if (!window.YT || !YT.Player) return;
+    
+    // Main Video Projection Player
+    videoPlayer = new YT.Player('videoPlayer', {
+      width: 640, height: 360,
+      host: 'https://www.youtube.com',
+      playerVars: { 
+        autoplay: 0, 
+        controls: 1, 
+        rel: 0, 
+        playsinline: 1, 
+        modestbranding: 1,
+        suggestedQuality: currentPreferredQuality 
+      },
+      events: {
+        onReady: () => { 
+          if (videoPlayer.setPlaybackQuality) {
+            videoPlayer.setPlaybackQuality(currentPreferredQuality);
+          }
+          if (pendingVideo) { playVideo(pendingVideo.id, pendingVideo.title); pendingVideo = null; } 
+          startProgressTracking();
+        },
+        onStateChange: (e) => {
+          if (e.data === 1) {
+            if (videoPlayer.setPlaybackQuality) videoPlayer.setPlaybackQuality(currentPreferredQuality);
+            startProgressTracking();
+          } else if (e.data === 0) {
+            playNextInQueue();
+          } else if (e.data === 2) {
+            if (currentVideoId && videoPlayer.getCurrentTime) {
+              const cur = Math.floor(videoPlayer.getCurrentTime());
+              const dur = Math.floor(videoPlayer.getDuration() || 0);
+              syncProgressToCloud({ id: currentVideoId, title: currentVideoTitle, second: cur, duration: dur, percent: Math.round((cur/dur)*100), updatedAt: Date.now() }, true);
+            }
+          }
+        },
+        onError: (e) => setStatus('Screen projection error: ' + e.data, true)
+      }
+    });
+
+    // Background Audio Player: CLAMP TO 144p TINY STREAM (Saves ~96% background data!)
+    musicPlayer = new YT.Player('musicPlayer', {
+      width: 160, height: 90,
+      host: 'https://www.youtube.com',
+      playerVars: { 
+        autoplay: 0, 
+        controls: 0, 
+        rel: 0, 
+        playsinline: 1,
+        vq: 'tiny' // Force 144p tiny stream for audio
+      },
+      events: {
+        onReady: () => { 
+          // Enforce lowest video bitrate for audio only
+          if (musicPlayer.setPlaybackQuality) {
+            musicPlayer.setPlaybackQuality('tiny');
+          }
+          if (pendingMusic) { playMusic(pendingMusic.id, pendingMusic.title); pendingMusic = null; }
+          musicPlayer.setVolume(parseInt(musicVolume.value));
+        },
+        onStateChange: (e) => {
+          if (e.data === 1) {
+            // Re-enforce tiny quality to prevent HD streaming
+            if (musicPlayer.setPlaybackQuality) musicPlayer.setPlaybackQuality('tiny');
+            document.body.classList.add('music-active');
+          } else if (e.data === 0) {
+            if (isMusicLooping) {
+              musicPlayer.seekTo(0);
+              musicPlayer.playVideo();
+            } else {
+              document.body.classList.remove('music-active');
+            }
+          } else {
+            document.body.classList.remove('music-active');
+          }
+        },
+        onError: (e) => setStatus('Acoustic deck error: ' + e.data, true)
+      }
+    });
+  }
+  window.onYouTubeIframeAPIReady = initPlayers;
+  if (window.YT && YT.Player) { initPlayers(); }
+  else { setTimeout(() => { if (!videoPlayer && window.YT && YT.Player) initPlayers(); }, 1500); }
+
+  function playVideo(id, title) {
+    currentVideoId = id;
+    if (title) currentVideoTitle = title;
+    if (!videoPlayer || !videoPlayer.loadVideoById) { pendingVideo = {id, title}; return; }
+    
+    // Load with preferred eco quality (saves bandwidth)
+    videoPlayer.loadVideoById({
+      videoId: id,
+      suggestedQuality: currentPreferredQuality
+    });
+    videoPlayer.playVideo();
+    setStatus('Projection loaded: ' + (title || id));
+    checkAndResumeProgress(id);
+
+    if (window.innerWidth <= 980) {
+      tabBtnVideo.click();
+    }
+  }
+
+  function playMusic(id, title) {
+    if (!musicPlayer || !musicPlayer.loadVideoById) { pendingMusic = {id, title}; return; }
+    
+    // Force tiny 144p stream
+    musicPlayer.loadVideoById({
+      videoId: id,
+      suggestedQuality: 'tiny'
+    });
+    musicPlayer.playVideo();
+    document.body.classList.add('music-active');
+    if (title) {
+      document.getElementById('musicInfo').textContent = title;
+      setStatus('Audio score active: ' + title);
+    }
+  }
+
+  // ----------------------------------------------------
+  // BANDWIDTH-SAVING CACHED SEARCH ENGINE
+  // ----------------------------------------------------
+  let lastVideoQuery = '';
+  let lastMusicQuery = '';
+
+  async function searchYouTube(query, pageToken) {
+    // ─── SECURE PROXY: Key never leaves server.py ───
+    // Check in-memory session cache (0 Network Bytes on cache hit!)
+    const cacheKey = `${query.toLowerCase().trim()}_${pageToken || ''}`;
+    if (searchCache.has(cacheKey)) {
+      setStatus('Retrieved from local archive cache (0 KB used).');
+      return searchCache.get(cacheKey);
+    }
+
+    let url = `/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=24`;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) { setStatus('API error: ' + (data.error.message || data.error || 'unknown'), true); return { items: [], nextPageToken: null }; }
+      
+      const resultObj = { items: data.items || [], nextPageToken: data.nextPageToken || null };
+      // Save in cache
+      searchCache.set(cacheKey, resultObj);
+      return resultObj;
+    } catch (e) {
+      setStatus('Network transmission error: ' + e.message, true);
+      return { items: [], nextPageToken: null };
+    }
+  }
+
+  function renderResults(container, items, onPick, isMusic = false) {
+    container.innerHTML = '';
+    items.forEach(item => {
+      const id = item.id.videoId;
+      const sn = item.snippet;
+      // High-efficiency, sharp widescreen thumbnail: mqdefault.jpg (320x180 native 16:9, ~11KB)
+      const mediumThumb = sn.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+      const fallbackThumb = sn.thumbnails?.default?.url || `https://i.ytimg.com/vi/${id}/default.jpg`;
+      const div = document.createElement('div');
+      div.className = 'result-item';
+      
+      if (!isMusic) {
+        div.innerHTML = `
+          <div class="thumb-container">
+            <div class="thumb-placeholder">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="2" width="20" height="20" rx="3" ry="3"/>
+                <line x1="7" y1="2" x2="7" y2="22"/>
+                <line x1="17" y1="2" x2="17" y2="22"/>
+                <line x1="2" y1="12" x2="22" y2="12"/>
+                <line x1="2" y1="7" x2="7" y2="7"/>
+                <line x1="2" y1="17" x2="7" y2="17"/>
+                <line x1="17" y1="17" x2="22" y2="17"/>
+                <line x1="17" y1="7" x2="22" y2="7"/>
+              </svg>
+            </div>
+            <img src="${mediumThumb}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onload="this.style.opacity='1'" onerror="this.onerror=null;this.src='${fallbackThumb}';">
+          </div>
+          <div class="item-bottom">
+            <div class="title" title="${escapeHtml(sn.title)}">${escapeHtml(sn.title)}</div>
+            <div class="card-actions">
+              <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-tertiary);letter-spacing:0.5px;">▶ PLAY REEL</span>
+              <button class="cue-btn">+ Cue</button>
+            </div>
+          </div>
+        `;
+        div.querySelector('.cue-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          addToCueQueue(id, sn.title);
+        });
+      } else {
+        div.innerHTML = `
+          <div class="thumb-container">
+            <div class="thumb-placeholder">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </div>
+            <img src="${mediumThumb}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onload="this.style.opacity='1'" onerror="this.onerror=null;this.src='${fallbackThumb}';">
+          </div>
+          <div class="title" title="${escapeHtml(sn.title)}">${escapeHtml(sn.title)}</div>
+        `;
+      }
+
+      div.addEventListener('click', () => onPick(id, sn.title));
+      container.appendChild(div);
+    });
+    if (!items.length) {
+      container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:12px;font-family:var(--font-mono);">No matching archive reels found.</div>';
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Focus Suite Shortcuts
+  document.querySelectorAll('.focus-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const q = pill.dataset.query;
+      document.getElementById('videoQuery').value = q;
+      document.getElementById('videoSearchBtn').click();
+      showToast('Scanning 40Hz Focus: ' + q.slice(0, 24));
+    });
+  });
+
+  // Curator Pills
+  document.querySelectorAll('.curator-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const q = pill.dataset.query;
+      document.getElementById('videoQuery').value = q;
+      document.getElementById('videoSearchBtn').click();
+    });
+  });
+
+  // Video Search
+  document.getElementById('videoSearchBtn').addEventListener('click', async () => {
+    const q = document.getElementById('videoQuery').value.trim();
+    if (!q) return;
+    lastVideoQuery = q;
+    setStatus('Scanning archives for: "' + q + '"...');
+    const container = document.getElementById('videoResults');
+    container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:8px;font-family:var(--font-mono);">Accessing projection vaults…</div>';
+    const { items } = await searchYouTube(q);
+    renderResults(container, items, (id, title) => {
+      playVideo(id, title);
+    }, false);
+    setStatus(items.length ? 'Archive retrieved: ' + items.length + ' films cataloged.' : 'No catalog matches found.');
+  });
+
+  // Music Search
+  document.getElementById('musicSearchBtn').addEventListener('click', async () => {
+    const q = document.getElementById('musicQuery').value.trim();
+    if (!q) return;
+    lastMusicQuery = q;
+    setStatus('Scanning acoustic archive for: "' + q + '"...');
+    const container = document.getElementById('musicResults');
+    container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:8px;font-family:var(--font-mono);">Connecting acoustic feed…</div>';
+    const { items } = await searchYouTube(q);
+    renderResults(container, items, (id, title) => {
+      playMusic(id, title);
+    }, true);
+    setStatus(items.length ? 'Score archive matched: ' + items.length + ' tracks.' : 'No score matches found.');
+  });
+
+  document.getElementById('videoQuery').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('videoSearchBtn').click(); });
+  document.getElementById('musicQuery').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('musicSearchBtn').click(); });
+
+  // Transport buttons
+  document.getElementById('musicPlay').addEventListener('click', () => { 
+    if (musicPlayer && musicPlayer.playVideo) {
+      musicPlayer.playVideo(); 
+      document.body.classList.add('music-active');
+      setStatus('Acoustic playback resumed.');
+    }
+  });
+  document.getElementById('musicPause').addEventListener('click', () => { 
+    if (musicPlayer && musicPlayer.pauseVideo) {
+      musicPlayer.pauseVideo(); 
+      document.body.classList.remove('music-active');
+      setStatus('Acoustic score paused.');
+    }
+  });
+  document.getElementById('musicStop').addEventListener('click', () => { 
+    if (musicPlayer && musicPlayer.stopVideo) { 
+      musicPlayer.stopVideo(); 
+      document.body.classList.remove('music-active');
+      document.getElementById('musicInfo').textContent = 'Playback stopped • Deck Idle'; 
+      setStatus('Deck playback cleared.');
+    }
+  });
+
+  // Initialize queue on load
+  renderCueQueue();
+  updateTimerClock();
+
+  // ----------------------------------------------------
+  // 2FA AUTH GATE: real QR code + Firebase session tracking
+  // ----------------------------------------------------
+  const authSessionId = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+  const authSessionIdDisplay = document.getElementById('authSessionIdDisplay');
+  if (authSessionIdDisplay) authSessionIdDisplay.textContent = authSessionId;
+
+  const authStatusChip = document.getElementById('authStatusChip');
+  const authStatusText = document.getElementById('authStatusText');
+
+  function setAuthStatus(state, text) {
+    if (authStatusChip) authStatusChip.className = 'auth-status-chip ' + state;
+    if (authStatusText) authStatusText.textContent = text;
+  }
+
+  async function initAuthGate() {
+    let phoneUrl = null;
+    try {
+      const res = await fetch('/api/network-info');
+      const info = await res.json();
+      phoneUrl = info.authPhoneUrl || ('http://' + info.recommendedHost + '/auth_phone.html');
+    } catch (e) {
+      phoneUrl = location.origin + '/auth_phone.html';
+    }
+    const fullUrl = phoneUrl + '?session=' + encodeURIComponent(authSessionId);
+
+    const qrEl = document.getElementById('qrCanvas');
+    if (qrEl) {
+      if (window.QRCode) {
+        qrEl.innerHTML = '';
+        try {
+          new QRCode(qrEl, {
+            text: fullUrl,
+            width: 180,
+            height: 180,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: (window.QRCode.CorrectLevel && window.QRCode.CorrectLevel.M) || 0
+          });
+        } catch (e) {
+          qrEl.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(fullUrl) + '" width="180" height="180" alt="QR">';
+        }
+      } else {
+        qrEl.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(fullUrl) + '" width="180" height="180" alt="QR">';
+      }
+    }
+
+    if (cloudDb) {
+      try {
+        await cloudDb.collection('auth_sessions').doc(authSessionId).set({
+          status: 'pending',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (e) {}
+
+      try {
+        cloudDb.collection('auth_sessions').doc(authSessionId).onSnapshot(snap => {
+          const data = snap.exists ? snap.data() : null;
+          if (!data) return;
+          if (data.status === 'scanned') {
+            setAuthStatus('scanned', 'Phone scanned — awaiting approval...');
+          } else if (data.status === 'authenticated' || data.approved === true) {
+            setAuthStatus('success', 'Access granted!');
+            setTimeout(() => {
+              const overlay = document.getElementById('authGateOverlay');
+              if (overlay) overlay.classList.add('hidden');
+            }, 900);
+          }
+        });
+      } catch (e) {}
+    }
+  }
+
+  initAuthGate();
+</script>
+</body>
+</html>

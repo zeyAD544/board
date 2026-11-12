@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Viewing Room — 2FA Phone Authenticator</title>
+  <meta name="referrer" content="no-referrer">
+
+  <!-- Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;600;700&family=Syne:wght@700&display=swap" rel="stylesheet">
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #08090c;
+      --bg-surface: #101218;
+      --bg-surface-elevated: #161822;
+      --border-subtle: #1e2230;
+      --border-mid: #2a2f42;
+      --text-primary: #f0f2f8;
+      --text-secondary: #9aa2b6;
+      --text-tertiary: #5d657a;
+      --amber: #e5a93b;
+      --amber-bright: #fbbf24;
+      --amber-glow: rgba(229, 169, 59, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.25);
+      --rose: #f43f5e;
+      --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-display: 'Syne', sans-serif;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 18px;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(229,169,59,0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 50% 110%, rgba(16,185,129,0.05), transparent);
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-mid);
+      border-radius: var(--radius);
+      padding: 28px 22px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.8), 0 0 24px rgba(229,169,59,0.08);
+      position: relative;
+    }
+
+    .badge-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .system-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--amber);
+      background: rgba(229,169,59,0.12);
+      border: 1px solid rgba(229,169,59,0.28);
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+
+    .tally-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 8px var(--amber);
+      animation: pulse 2s infinite;
+    }
+    .tally-dot.approved { background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
+    .tally-dot.pending { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+    .tally-dot.rejected { background: var(--rose); box-shadow: 0 0 8px var(--rose); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.8; transform: scale(0.95); }
+      50% { opacity: 1; transform: scale(1.15); }
+    }
+
+    .auth-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .auth-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-tertiary);
+      letter-spacing: 0.5px;
+      margin-bottom: 24px;
+    }
+
+    /* Device Status Block */
+    .status-panel {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .meta-label { color: var(--text-tertiary); }
+    .meta-value { color: var(--text-secondary); font-weight: 600; }
+    .meta-value.highlight { color: var(--amber-bright); }
+    .meta-value.success { color: #34d399; }
+    .meta-value.danger { color: #fb7185; }
+
+    /* Action Panels */
+    .state-panel { display: none; }
+    .state-panel.active { display: block; }
+
+    .instructions-box {
+      background: rgba(229,169,59,0.06);
+      border: 1px solid rgba(229,169,59,0.22);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #fde68a;
+    }
+
+    .instructions-box ol {
+      margin-left: 18px;
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .instructions-box code {
+      font-family: var(--font-mono);
+      background: rgba(0,0,0,0.4);
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: var(--amber-bright);
+    }
+
+    .auth-btn {
+      width: 100%;
+      min-height: 52px;
+      background: linear-gradient(135deg, var(--amber), #c48b26);
+      color: #08090c;
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px var(--amber-glow);
+      transition: all 0.2s ease;
+      touch-action: manipulation;
+    }
+
+    .auth-btn:active {
+      transform: scale(0.98);
+      filter: brightness(1.1);
+    }
+
+    .auth-btn.success {
+      background: linear-gradient(135deg, var(--emerald), #059669);
+      color: #ffffff;
+      box-shadow: 0 4px 16px var(--emerald-glow);
+    }
+
+    .device-id-chip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #0d0e14;
+      border: 1px solid var(--border-mid);
+      color: var(--amber-bright);
+      padding: 8px 12px;
+      border-radius: 6px;
+      text-align: center;
+      word-break: break-all;
+      user-select: all;
+    }
+
+    .footer-note {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-tertiary);
+      text-align: center;
+      margin-top: 22px;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth-card">
+    <div class="badge-bar">
+      <div class="system-badge">
+        <span class="tally-dot" id="tallyDot"></span>
+        <span>2FA Vault Gate</span>
+      </div>
+      <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);" id="clockTime">--:--:--</span>
+    </div>
+
+    <div class="auth-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber);">
+        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+        <line x1="12" y1="18" x2="12.01" y2="18"/>
+      </svg>
+      Phone Authenticator
+    </div>
+    <div class="auth-sub">Hardware Signature &amp; Firebase 2FA Authorization</div>
+
+    <!-- Live Telemetry -->
+    <div class="status-panel">
+      <div class="meta-row">
+        <span class="meta-label">Device Token</span>
+        <span class="meta-value" id="phoneTokenShort">Generating...</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Registration Status</span>
+        <span class="meta-value highlight" id="regStatusLabel">Connecting...</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Target Tablet Session</span>
+        <span class="meta-value" id="targetSessionLabel">Scanning...</span>
+      </div>
+    </div>
+
+    <!-- STATE 1: PENDING FIREBASE APPROVAL (New Device) -->
+    <div class="state-panel" id="panelPending">
+      <div class="instructions-box">
+        <strong>⚠️ DEVICE REGISTRATION PENDING</strong>
+        <p style="margin-top:4px;">This phone has been registered in your Firebase database, but requires <strong>manual authorization</strong> before it can authenticate tablets.</p>
+        <ol>
+          <li>Open your <strong>Firebase Console</strong> (`white-ecc41`).</li>
+          <li>Go to <strong>Cloud Firestore</strong> &rarr; <code>authorized_devices</code>.</li>
+          <li>Locate document matching your Device ID below:</li>
+        </ol>
+      </div>
+
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px;font-family:var(--font-mono);">YOUR DEVICE ID:</div>
+      <div class="device-id-chip" id="fullDeviceIdDisplay">dev_...</div>
+
+      <div style="margin-top:16px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--amber);">
+        Set <code>approved: true</code> in Firestore.<br>
+        <span style="color:var(--text-tertiary);font-size:10px;">This page updates automatically upon approval.</span>
+      </div>
+    </div>
+
+    <!-- STATE 2: APPROVED TRUSTED DEVICE (Ready to Authenticate) -->
+    <div class="state-panel" id="panelApproved">
+      <div style="text-align:center;padding:12px 0 20px;">
+        <div style="display:inline-flex;padding:12px;background:rgba(16,185,129,0.12);border-radius:50%;margin-bottom:12px;">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <div style="font-size:16px;font-weight:700;color:#f0f2f8;">Trusted Authenticator Verified</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+          This phone is authorized in Firebase. Tap below to authenticate your tablet.
+        </div>
+      </div>
+
+      <button class="auth-btn" id="authorizeBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        AUTHORIZE TABLET ACCESS
+      </button>
+    </div>
+
+    <!-- STATE 3: AUTHENTICATED SUCCESS -->
+    <div class="state-panel" id="panelSuccess">
+      <div style="text-align:center;padding:24px 0;">
+        <div style="display:inline-flex;padding:16px;background:rgba(16,185,129,0.15);border-radius:50%;margin-bottom:14px;">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+        <div style="font-size:18px;font-weight:700;color:#34d399;">Access Granted!</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.5;">
+          Your tablet session has been authorized.<br>The Viewing Room screen is now unlocked.
+        </div>
+      </div>
+      <button class="auth-btn success" onclick="window.close();">Close Window</button>
+    </div>
+
+    <!-- STATE 4: NO SESSION ID -->
+    <div class="state-panel" id="panelNoSession">
+      <div class="instructions-box" style="border-color:rgba(244,63,94,0.3);background:rgba(244,63,94,0.08);color:#fecdd3;">
+        <strong>NO SESSION SPECIFIED</strong>
+        <p style="margin-top:6px;">Please scan the QR code displayed on your tablet's screen to authenticate a live session.</p>
+      </div>
+    </div>
+
+    <div class="footer-note">VIEWING ROOM 2FA GATE • PROJECT WHITE-ECC41</div>
+  </div>
+
+  <script>
+    // Live Clock
+    setInterval(() => {
+      const d = new Date();
+      document.getElementById('clockTime').textContent = d.toTimeString().split(' ')[0];
+    }, 1000);
+
+    // Parse Query Params
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetSessionId = urlParams.get('session');
+
+    // Persistent Device Signature in localStorage
+    const DEVICE_ID_KEY = 'vr_phone_device_id';
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = 'dev_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      localStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+
+    document.getElementById('phoneTokenShort').textContent = deviceId.slice(0, 14) + '...';
+    document.getElementById('fullDeviceIdDisplay').textContent = deviceId;
+    document.getElementById('targetSessionLabel').textContent = targetSessionId ? targetSessionId.slice(0, 16) : 'None';
+
+    // Firebase Init
+    const FB_CONFIG = {
+      apiKey: 'AIzaSyC1VKNem8Zf5NSfMl769DAwpQYxMp9QXlg',
+      authDomain: 'white-ecc41.firebaseapp.com',
+      projectId: 'white-ecc41',
+      storageBucket: 'white-ecc41.firebasestorage.app',
+      messagingSenderId: '411551131983',
+      appId: '1:411551131983:web:a7142222b065c1ebeb7d3a'
+    };
+
+    let db = null;
+    try {
+      if (window.firebase) {
+        if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
+        db = firebase.firestore();
+      }
+    } catch (e) {
+      console.error('Firebase initialization error:', e);
+    }
+
+    function switchPanel(name) {
+      document.querySelectorAll('.state-panel').forEach(p => p.classList.remove('active'));
+      const target = document.getElementById(name);
+      if (target) target.classList.add('active');
+    }
+
+    async function initPhoneAuthenticator() {
+      if (!targetSessionId) {
+        switchPanel('panelNoSession');
+        document.getElementById('regStatusLabel').textContent = 'Missing QR Session';
+        return;
+      }
+
+      if (!db) {
+        document.getElementById('regStatusLabel').textContent = 'Cloud Offline';
+        return;
+      }
+
+      const deviceRef = db.collection('authorized_devices').doc(deviceId);
+      const sessionRef = db.collection('auth_sessions').doc(targetSessionId);
+
+      // Notify tablet that phone has scanned the QR code
+      try {
+        await sessionRef.set({
+          status: 'scanned',
+          scannedByDevice: deviceId,
+          lastScanAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (err) {}
+
+      // Check or Register Device in authorized_devices
+      deviceRef.onSnapshot(async docSnap => {
+        if (!docSnap.exists) {
+          // Register device with approved: false (User will approve in Firebase)
+          const newDoc = {
+            deviceId: deviceId,
+            platform: navigator.userAgent,
+            registeredAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastAttempt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending_approval',
+            approved: false
+          };
+          await deviceRef.set(newDoc);
+          setPendingUI();
+        } else {
+          const data = docSnap.data();
+          if (data.approved === true) {
+            setApprovedUI();
+          } else {
+            setPendingUI();
+          }
+        }
+      }, err => {
+        console.error('Device listener error:', err);
+        setPendingUI();
+      });
+
+      function setPendingUI() {
+        document.getElementById('tallyDot').className = 'tally-dot pending';
+        document.getElementById('regStatusLabel').textContent = 'Pending Firebase Approval';
+        document.getElementById('regStatusLabel').className = 'meta-value highlight';
+        switchPanel('panelPending');
+      }
+
+      function setApprovedUI() {
+        document.getElementById('tallyDot').className = 'tally-dot approved';
+        document.getElementById('regStatusLabel').textContent = 'Verified (Approved)';
+        document.getElementById('regStatusLabel').className = 'meta-value success';
+        switchPanel('panelApproved');
+      }
+
+      // Authorize Button Action
+      document.getElementById('authorizeBtn').addEventListener('click', async () => {
+        try {
+          document.getElementById('authorizeBtn').disabled = true;
+          document.getElementById('authorizeBtn').textContent = 'TRANSMITTING TOKEN...';
+
+          await sessionRef.set({
+            approved: true,
+            status: 'authenticated',
+            authenticatedBy: deviceId,
+            authenticatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+
+          if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+          switchPanel('panelSuccess');
+        } catch (e) {
+          alert('Authorization transmission error: ' + e.message);
+          document.getElementById('authorizeBtn').disabled = false;
+          document.getElementById('authorizeBtn').textContent = 'RETRY AUTHORIZE';
+        }
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', initPhoneAuthenticator);
+  </script>
+</body>
+</html>
