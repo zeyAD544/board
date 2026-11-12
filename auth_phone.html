@@ -454,33 +454,41 @@
         switchPanel('panelPending');
       }
 
-      function setApprovedUI() {
-        document.getElementById('tallyDot').className = 'tally-dot approved';
-        document.getElementById('regStatusLabel').textContent = 'Verified (Approved)';
-        document.getElementById('regStatusLabel').className = 'meta-value success';
-        switchPanel('panelApproved');
-      }
-
-      // Authorize Button Action
-      document.getElementById('authorizeBtn').addEventListener('click', async () => {
+      let autoAuthDone = false;
+      async function authorizeTablet() {
+        const btn = document.getElementById('authorizeBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'TRANSMITTING TOKEN...'; }
         try {
-          document.getElementById('authorizeBtn').disabled = true;
-          document.getElementById('authorizeBtn').textContent = 'TRANSMITTING TOKEN...';
-
           await sessionRef.set({
             approved: true,
             status: 'authenticated',
             authenticatedBy: deviceId,
             authenticatedAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
-
           if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
           switchPanel('panelSuccess');
         } catch (e) {
+          if (btn) { btn.disabled = false; btn.textContent = 'RETRY AUTHORIZE'; }
           alert('Authorization transmission error: ' + e.message);
-          document.getElementById('authorizeBtn').disabled = false;
-          document.getElementById('authorizeBtn').textContent = 'RETRY AUTHORIZE';
         }
+      }
+
+      function setApprovedUI() {
+        document.getElementById('tallyDot').className = 'tally-dot approved';
+        document.getElementById('regStatusLabel').textContent = 'Verified (Approved)';
+        document.getElementById('regStatusLabel').className = 'meta-value success';
+        switchPanel('panelApproved');
+        // Permanently linked: auto-authorize on subsequent scans without manual tap
+        if (targetSessionId && !autoAuthDone) {
+          autoAuthDone = true;
+          setTimeout(() => { authorizeTablet(); }, 700);
+        }
+      }
+
+      // Authorize Button Action
+      document.getElementById('authorizeBtn').addEventListener('click', () => {
+        if (!autoAuthDone) { autoAuthDone = true; }
+        authorizeTablet();
       });
     }
 
