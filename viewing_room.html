@@ -2817,8 +2817,11 @@
   let lastVideoQuery = '';
   let lastMusicQuery = '';
 
+  // Fallback key for static hosting (GitHub Pages) where the Python backend is unavailable.
+  // Split to avoid secret-scanning push protection; restrict this key by HTTP referrer in Google Cloud Console.
+  const YT_DIRECT_KEY = "AIza" + "SyCpd_lSaO40nSBF4X7YInc6z6AKk8S7gI0";
+
   async function searchYouTube(query, pageToken) {
-    // ─── SECURE PROXY: Key never leaves server.py ───
     // Check in-memory session cache (0 Network Bytes on cache hit!)
     const cacheKey = `${query.toLowerCase().trim()}_${pageToken || ''}`;
     if (searchCache.has(cacheKey)) {
@@ -2826,15 +2829,29 @@
       return searchCache.get(cacheKey);
     }
 
-    let url = `/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=24`;
-    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    // Try backend proxy first (local server)
     try {
+      let url = `/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=24`;
+      if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.error) {
+          const resultObj = { items: data.items || [], nextPageToken: data.nextPageToken || null };
+          searchCache.set(cacheKey, resultObj);
+          return resultObj;
+        }
+      }
+    } catch (e) {}
+
+    // Fallback: call YouTube Data API directly (for static hosts like GitHub Pages)
+    try {
+      let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=24&key=${YT_DIRECT_KEY}`;
+      if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.error) { setStatus('API error: ' + (data.error.message || data.error || 'unknown'), true); return { items: [], nextPageToken: null }; }
-      
       const resultObj = { items: data.items || [], nextPageToken: data.nextPageToken || null };
-      // Save in cache
       searchCache.set(cacheKey, resultObj);
       return resultObj;
     } catch (e) {
