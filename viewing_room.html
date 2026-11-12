@@ -1717,6 +1717,7 @@
           <button class="aspect-btn" data-ratio="21/9">2.39:1</button>
           <button class="aspect-btn" data-ratio="4/3">4:3</button>
         </div>
+        <button class="touch-btn" id="fullscreenBtn" title="Toggle fullscreen" style="min-height:32px;padding:0 10px;font-size:10px;">Fullscreen</button>
       </div>
 
       <div class="player-wrap" id="mainPlayerWrap">
@@ -2619,6 +2620,22 @@
       else wrap.style.aspectRatio = '16 / 9';
     });
   });
+
+  // Fullscreen Toggle
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', () => {
+      const el = document.getElementById('mainPlayerWrap') || document.documentElement;
+      if (!document.fullscreenElement) {
+        (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen || function(){}).call(el);
+      } else {
+        (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen || function(){}).call(document);
+      }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
+    });
+  }
 
   // Audio Controls
   const musicVolume = document.getElementById('musicVolume');
