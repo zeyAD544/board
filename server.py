@@ -22,7 +22,19 @@ PORT = 8000
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # YouTube API Secret Key (Kept strictly on backend)
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
+def load_youtube_key():
+    key = os.environ.get("YOUTUBE_API_KEY", "").strip()
+    if not key:
+        key_path = os.path.join(WORKSPACE_DIR, 'youtube_key.txt')
+        if os.path.exists(key_path):
+            try:
+                with open(key_path, 'r', encoding='utf-8') as f:
+                    key = f.read().strip()
+            except Exception:
+                key = ""
+    return key
+
+YOUTUBE_API_KEY = load_youtube_key()
 
 def get_local_ip():
     """Detect the local machine IP on the LAN for QR pairing."""

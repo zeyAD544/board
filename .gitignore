@@ -1,5 +1,6 @@
 # Secrets / local config
 tokens.txt
+youtube_key.txt
 .env
 *.env
 
