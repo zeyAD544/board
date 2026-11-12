@@ -3012,7 +3012,8 @@
       const info = await res.json();
       phoneUrl = info.authPhoneUrl || ('http://' + info.recommendedHost + '/auth_phone.html');
     } catch (e) {
-      phoneUrl = location.origin + '/auth_phone.html';
+      const basePath = location.pathname.replace(/[^/]*$/, '');
+      phoneUrl = location.origin + basePath + 'auth_phone.html';
     }
     const fullUrl = phoneUrl + '?session=' + encodeURIComponent(authSessionId);
 
