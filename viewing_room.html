@@ -1645,10 +1645,12 @@
       </div>
 
       <!-- Cloud Sync & Saved History button -->
-      <div class="cloud-sync-pill" id="historyModalBtn" title="Saved History & Cloud Sync">
+       <div class="cloud-sync-pill" id="historyModalBtn" title="Saved History & Cloud Sync">
         <span class="cloud-sync-pulse"></span>
         <span id="cloudStatusText">Cloud Synced</span>
       </div>
+
+      <button class="touch-btn" id="favModalBtn" title="Favorites" style="min-height:40px;">♥ Favs</button>
 
       <!-- Eye-Protection Mode button -->
       <button class="touch-btn" id="eyeToggleBtn" title="Eye-Protection Night Shield">
@@ -1945,6 +1947,20 @@
       <div style="font-size:9.5px;color:#6ee7b7;">● Eco Bandwidth Guard Active</div>
     </div>
   </aside>
+</div>
+
+<!-- Favorites Modal -->
+<div class="history-modal" id="favModal">
+  <div class="history-card">
+    <div class="history-header">
+      <div>
+        <div style="font-family:var(--font-display);font-size:15px;font-weight:700;">Favorites</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--emerald);margin-top:2px;">Saved videos &amp; background sounds</div>
+      </div>
+      <button class="touch-btn" id="closeFavBtn">Close</button>
+    </div>
+    <div class="history-list" id="favList"></div>
+  </div>
 </div>
 
 <!-- History & Cloud Sync Queue Modal -->
@@ -2907,10 +2923,11 @@
           </div>
           <div class="item-bottom">
             <div class="title" title="${escapeHtml(sn.title)}">${escapeHtml(sn.title)}</div>
-            <div class="card-actions">
-              <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-tertiary);letter-spacing:0.5px;">▶ PLAY REEL</span>
-              <button class="cue-btn">+ Cue</button>
-            </div>
+             <div class="card-actions">
+               <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-tertiary);letter-spacing:0.5px;">▶ PLAY REEL</span>
+               <button class="cue-btn">+ Cue</button>
+               <button class="cue-btn fav-btn" data-id="${id}" data-title="${escapeHtml(sn.title)}" data-type="video">♥ Fav</button>
+             </div>
           </div>
         `;
         div.querySelector('.cue-btn').addEventListener('click', (e) => {
@@ -2928,12 +2945,18 @@
             </div>
             <img src="${mediumThumb}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer" onload="this.style.opacity='1'" onerror="this.onerror=null;this.src='${fallbackThumb}';">
           </div>
-          <div class="title" title="${escapeHtml(sn.title)}">${escapeHtml(sn.title)}</div>
-        `;
+           <div class="title" title="${escapeHtml(sn.title)}">${escapeHtml(sn.title)}</div>
+           <button class="cue-btn fav-btn" data-id="${id}" data-title="${escapeHtml(sn.title)}" data-type="music" style="margin:0 8px 8px;">♥ Fav</button>
+         `;
       }
 
-      div.addEventListener('click', () => onPick(id, sn.title));
-      container.appendChild(div);
+       div.addEventListener('click', () => onPick(id, sn.title));
+       const favBtn = div.querySelector('.fav-btn');
+       if (favBtn) favBtn.addEventListener('click', (e) => {
+         e.stopPropagation();
+         addToFavorites(favBtn.dataset.id, favBtn.dataset.title, favBtn.dataset.type);
+       });
+       container.appendChild(div);
     });
     if (!items.length) {
       container.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:12px;font-family:var(--font-mono);">No matching archive reels found.</div>';
@@ -3019,6 +3042,61 @@
       setStatus('Deck playback cleared.');
     }
   });
+
+  // ----------------------------------------------------
+  // FAVORITES (videos & background sounds)
+  // ----------------------------------------------------
+  const FAV_STORAGE = 'vr_favorites';
+  function getFavorites() {
+    try { return JSON.parse(localStorage.getItem(FAV_STORAGE) || '[]'); } catch { return []; }
+  }
+  function saveFavorites(f) { localStorage.setItem(FAV_STORAGE, JSON.stringify(f)); }
+  function addToFavorites(id, title, type) {
+    const f = getFavorites();
+    if (f.some(x => x.id === id && x.type === type)) { showToast('Already in favorites.'); return; }
+    f.unshift({ id, title, type });
+    saveFavorites(f);
+    showToast('Added to favorites: ' + (title || id).slice(0, 30));
+  }
+  function removeFromFavorites(id, type) {
+    const f = getFavorites().filter(x => !(x.id === id && x.type === type));
+    saveFavorites(f);
+    renderFavModal();
+  }
+  function renderFavModal() {
+    const list = document.getElementById('favList');
+    if (!list) return;
+    const f = getFavorites();
+    if (!f.length) { list.innerHTML = '<div style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:11px;padding:12px;">No favorites yet. Tap ♥ Fav on any video or sound.</div>'; return; }
+    list.innerHTML = '';
+    f.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'history-entry';
+      const thumb = item.type === 'video' ? `https://i.ytimg.com/vi/${item.id}/default.jpg` : '';
+      row.innerHTML = `
+        ${thumb ? `<img src="${thumb}" class="history-thumb" alt="" referrerpolicy="no-referrer">` : '<div class="history-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px;">♫</div>'}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.title || 'Favorite')}</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);margin-top:2px;">${item.type === 'video' ? 'Video' : 'Background Sound'}</div>
+        </div>
+        <button class="touch-btn" style="min-height:34px;padding:2px 10px;font-size:10px;" data-action="play">Play</button>
+        <button class="touch-btn" style="min-height:34px;padding:2px 10px;font-size:10px;color:var(--tally-red);border-color:rgba(244,63,94,0.35);" data-action="remove">Remove</button>
+      `;
+      row.querySelector('[data-action="play"]').addEventListener('click', () => {
+        document.getElementById('favModal').classList.remove('open');
+        if (item.type === 'video') playVideo(item.id, item.title); else playMusic(item.id, item.title);
+      });
+      row.querySelector('[data-action="remove"]').addEventListener('click', () => removeFromFavorites(item.id, item.type));
+      list.appendChild(row);
+    });
+  }
+
+  const favModal = document.getElementById('favModal');
+  const favModalBtn = document.getElementById('favModalBtn');
+  if (favModalBtn) favModalBtn.addEventListener('click', () => { favModal.classList.add('open'); renderFavModal(); });
+  const closeFavBtn = document.getElementById('closeFavBtn');
+  if (closeFavBtn) closeFavBtn.addEventListener('click', () => favModal.classList.remove('open'));
+  if (favModal) favModal.addEventListener('click', (e) => { if (e.target === favModal) favModal.classList.remove('open'); });
 
   // Initialize queue on load
   renderCueQueue();
