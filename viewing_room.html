@@ -2994,6 +2994,7 @@
   // 2FA AUTH GATE: real QR code + Firebase session tracking
   // ----------------------------------------------------
   const authSessionId = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+  const lastApprovedDeviceId = localStorage.getItem('vr_last_approved_device');
   const authSessionIdDisplay = document.getElementById('authSessionIdDisplay');
   if (authSessionIdDisplay) authSessionIdDisplay.textContent = authSessionId;
 
@@ -3015,7 +3016,8 @@
       const basePath = location.pathname.replace(/[^/]*$/, '');
       phoneUrl = location.origin + basePath + 'auth_phone.html';
     }
-    const fullUrl = phoneUrl + '?session=' + encodeURIComponent(authSessionId);
+    let fullUrl = phoneUrl + '?session=' + encodeURIComponent(authSessionId);
+    if (lastApprovedDeviceId) fullUrl += '&device=' + encodeURIComponent(lastApprovedDeviceId);
 
     const qrEl = document.getElementById('qrCanvas');
     if (qrEl) {
@@ -3053,6 +3055,7 @@
           if (data.status === 'scanned') {
             setAuthStatus('scanned', 'Phone scanned — awaiting approval...');
           } else if (data.status === 'authenticated' || data.approved === true) {
+            if (data.authenticatedBy) localStorage.setItem('vr_last_approved_device', data.authenticatedBy);
             setAuthStatus('success', 'Access granted!');
             setTimeout(() => {
               const overlay = document.getElementById('authGateOverlay');

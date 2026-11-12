@@ -360,11 +360,12 @@
 
     // Persistent Device Signature in localStorage
     const DEVICE_ID_KEY = 'vr_phone_device_id';
-    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    const urlDevice = urlParams.get('device');
+    let deviceId = urlDevice || localStorage.getItem(DEVICE_ID_KEY);
     if (!deviceId) {
       deviceId = 'dev_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-      localStorage.setItem(DEVICE_ID_KEY, deviceId);
     }
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
 
     document.getElementById('phoneTokenShort').textContent = deviceId.slice(0, 14) + '...';
     document.getElementById('fullDeviceIdDisplay').textContent = deviceId;
